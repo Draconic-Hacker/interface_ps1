@@ -29,7 +29,7 @@ Invoke-WebRequest -Uri $urlUninstall -OutFile $uninstallFile
 Invoke-WebRequest -Uri $urlUpdate -OutFile $updateFile
 
 
-Write-Host "`nBaixando dependências e runtime (isso pode demorar um pouco)..." -ForegroundColor Cyan
+Write-Host "`nBaixando dependencias e runtime (isso pode demorar um pouco)..." -ForegroundColor Cyan
 
 # Faz o download dos arquivos compactados
 Invoke-WebRequest -Uri $urlDeps -OutFile $zipDeps
