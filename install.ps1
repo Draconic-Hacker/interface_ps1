@@ -6,9 +6,9 @@ $updateFile = Join-Path $installDir "update.ps1"
 $uninstallFile = Join-Path $installDir "uninstall.ps1"
 
 
-$urlInterface = "https://raw.githubusercontent.com/Draconic-Hacker/scripts-batch/refs/heads/master/interfaceGui.ps1"
-$urlUpdate = "https://raw.githubusercontent.com/Draconic-Hacker/scripts-batch/refs/heads/master/update.ps1"
-$urlUninstall = "https://raw.githubusercontent.com/Draconic-Hacker/scripts-batch/refs/heads/master/uninstall.ps1"
+$urlInterface = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/interfaceGUI.ps1"
+$urlUpdate = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/update.ps1"
+$urlUninstall = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/uninstall.ps1"
 
 # 1. Cria a pasta se não existir
 if (!(Test-Path $installDir)) {
