@@ -1,4 +1,4 @@
-# Caminhos (Supondo que estão na AppData)
+# Caminhos (Supondo que estao na AppData)
 $installDir    = Join-Path $env:APPDATA "browser-files"
 $dllPath     = Join-Path $installDir "dependences\Microsoft.Web.WebView2.WinForms.dll"
 
