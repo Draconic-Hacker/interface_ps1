@@ -1,9 +1,6 @@
 # muda de pasta para executar o script
 cd $env:TEMP
 
-# fecha a janela do navegador.bat aberta para evitar erro de conflito
-# taskkill /fi "windowtitle eq Meu Gerenciador" /f >nul
-
 # uninstall.ps1
 $installDir = Join-Path $env:APPDATA "browser-files"
 
