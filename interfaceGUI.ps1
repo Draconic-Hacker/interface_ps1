@@ -1,7 +1,12 @@
 # Caminhos (Supondo que estão na AppData)
-$basePath    = Join-Path $env:APPDATA "browser-files"
+$basePath    = $env:APPDATA "browser-files"
 $dllPath     = Join-Path $basePath "dependences\Microsoft.Web.WebView2.WinForms.dll"
 
+# DEBUG: Isso vai te mostrar na tela se o arquivo realmente está lá antes de tentar carregar
+if (-not (Test-Path $dllPath)) {
+    [System.Windows.Forms.MessageBox]::Show("ERRO: DLL não encontrada em: $dllPath")
+    exit
+}
 
 Add-Type -Path $dllPath
 Add-Type -AssemblyName System.Windows.Forms
@@ -9,7 +14,7 @@ Add-Type -AssemblyName System.Drawing
 
 
 
-# Cria a Janela Principal (o "container")
+# Cria a Janela Principal (o "container")e
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Browser Interface"
 $form.Size = New-Object System.Drawing.Size(800, 600)
