@@ -90,7 +90,8 @@ $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 # 3. Configuramos as propriedades
 $Shortcut.TargetPath = "powershell.exe"
 # Usamos "" para garantir que o caminho do arquivo fique entre aspas mesmo com espaços
-$Shortcut.Arguments = "-WindowStyle Hidden -File ""$installDir\interfaceGui.ps1"""
+# $Shortcut.Arguments = "-WindowStyle Hidden -File ""$installDir\interfaceGui.ps1"""
+$Shortcut.Arguments = "-File ""$installDir\interfaceGui.ps1"""
 $Shortcut.WorkingDirectory = $installDir
 $Shortcut.IconLocation = "shell32.dll,21" 
 $Shortcut.Save()
