@@ -8,5 +8,33 @@ Write-Host "Fazendo a atualizacao dos arquivos de Browser-Files..." -ForegroundC
 
 Invoke-WebRequest -Uri $urlInterface -OutFile $interfaceFile
 
+Write-Host "Atualizando o atalho na Area de TRabalho..." -ForegroundColor Cyan
+
+# Remocao do antigo atalho
+
+$removeLnk = Join-Path $env:USERPROFILE "Desktop"
+$lnkGui = Join-Path $removeLnk "InterfaceGUi.lnk"
+Remove-Item $lnkGui -Recurse -Force
+
+# criacao do atalho na area de trabalho atualizado
+
+$WshShell = New-Object -ComObject WScript.Shell
+$DesktopPath = [System.Environment]::GetFolderPath("Desktop")
+
+# 1. Definimos o caminho completo do atalho primeiro
+$ShortcutPath = Join-Path $DesktopPath "InterfaceGUi.lnk"
+
+# 2. Criamos o objeto de atalho
+$Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+
+# 3. Configuramos as propriedades
+$Shortcut.TargetPath = "powershell.exe"
+# Usamos "" para garantir que o caminho do arquivo fique entre aspas mesmo com espaços
+# $Shortcut.Arguments = "-WindowStyle Hidden -File ""$installDir\interfaceGui.ps1"""
+$Shortcut.Arguments = "-File ""$installDir\interfaceGui.ps1"""
+$Shortcut.WorkingDirectory = $installDir
+$Shortcut.IconLocation = "shell32.dll,21" 
+$Shortcut.Save()
+
 write-host "`nAutalizacoes concluidas, pressione Enter para fechar o terminal." -Foregroundcolor Green
 Read-Host | Out-Null
