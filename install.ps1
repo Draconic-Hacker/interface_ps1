@@ -1,19 +1,24 @@
 # Caminho em AppData (C:\Users\Usuario\AppData\Roaming\browser-files)
 $installDir = Join-Path $env:APPDATA "browser-files"
 
+
 $interfaceFile = Join-Path $installDir "interfaceGui.ps1"
 $updateFile = Join-Path $installDir "update.ps1"
 $uninstallFile = Join-Path $installDir "uninstall.ps1"
+$zipDeps    = Join-Path $installDir "dependences.zip"
 
 
 $urlInterface = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/interfaceGUI.ps1"
 $urlUpdate = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/update.ps1"
 $urlUninstall = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/uninstall.ps1"
+$urlDeps    = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/dependences.zip"
+
 
 # 1. Cria a pasta se não existir
 if (!(Test-Path $installDir)) {
     New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 }
+
 
 # 2. Baixa os arquivos com a codificação correta para o CMD
 Write-Host "Baixando os arquivos do browser-files..." -ForegroundColor Cyan
@@ -22,6 +27,23 @@ Write-Host "Baixando os arquivos do browser-files..." -ForegroundColor Cyan
 Invoke-WebRequest -Uri $urlInterface -OutFile $interfaceFile
 Invoke-WebRequest -Uri $urlUninstall -OutFile $uninstallFile
 Invoke-WebRequest -Uri $urlUpdate -OutFile $updateFile
+
+
+Write-Host "`nBaixando dependências e runtime (isso pode demorar um pouco)..." -ForegroundColor Cyan
+
+# Faz o download dos arquivos compactados
+Invoke-WebRequest -Uri $urlDeps -OutFile $zipDeps
+
+Write-Host "Extraindo arquivos..." -ForegroundColor Yellow
+
+# Extrai os arquivos usando o comando nativo do PowerShell
+# O parâmetro -Force sobrescreve se já existir
+Expand-Archive -Path $zipDeps -DestinationPath $installDir -Force
+
+# Limpeza: Apaga os arquivos .zip após a extração
+Remove-Item $zipDeps
+
+Write-Host "`nDependencias baixadas e extraidas!" -ForegroundColor Green
 
 Write-Host "`nVerificando motor de renderizacao (WebView2)..." -ForegroundColor Cyan
 
