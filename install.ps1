@@ -23,13 +23,13 @@ Invoke-WebRequest -Uri $urlInterface -OutFile $interfaceFile
 Invoke-WebRequest -Uri $urlUninstall -OutFile $uninstallFile
 Invoke-WebRequest -Uri $urlUpdate -OutFile $updateFile
 
-Write-Host "`nVerificando motor de renderização (WebView2)..." -ForegroundColor Cyan
+Write-Host "`nVerificando motor de renderizacao (WebView2)..." -ForegroundColor Cyan
 
 # Verifica se o Runtime já está instalado no Windows
 $isInstalled = Test-Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F1113F6E-3E03-4435-89F3-91701048E59E}"
 
 if (-not $isInstalled) {
-    Write-Host "`nWebView2 não encontrado. Baixando instalador oficial..." -ForegroundColor Yellow
+    Write-Host "`nWebView2 nao encontrado. Baixando instalador oficial..." -ForegroundColor Yellow
     $webClient = New-Object System.Net.WebClient
     $bootstrapperPath = Join-Path $env:TEMP "MicrosoftEdgeWebview2Setup.exe"
     
@@ -41,7 +41,7 @@ if (-not $isInstalled) {
     Start-Process -FilePath $bootstrapperPath -ArgumentList "/silent", "/install" -Wait
     Remove-Item $bootstrapperPath
 } else {
-    Write-Host "`nWebView2 já está presente no sistema." -ForegroundColor Green
+    Write-Host "`nWebView2 ja esta presente no sistema." -ForegroundColor Green
 }
 
 # 3. Adiciona ao PATH do Usuário (se já não estiver lá)
@@ -52,7 +52,7 @@ if ($oldPath -notlike "*$installDir*") {
 }
 
 Write-Host "`nInstalacao concluida!" -ForegroundColor Green
-Write-Host "`nCriando atalho na Área de Trabalho..." -ForegroundColor yellow
+Write-Host "`nCriando atalho na Area de Trabalho..." -ForegroundColor yellow
 
 # criação do atalho na area de trabalho
 
@@ -73,7 +73,7 @@ $Shortcut.WorkingDirectory = $installDir
 $Shortcut.IconLocation = "shell32.dll,21" 
 $Shortcut.Save()
 
-Write-Host "`nAtalho criado na Área de Trabalho com sucesso!" -ForegroundColor Green
+Write-Host "`nAtalho criado na Area de Trabalho com sucesso!" -ForegroundColor Green
 Write-Host "`nPressione Enter para fechar o terminal..." -ForegroundColor Green
 Read-Host | Out-Null
 exit
