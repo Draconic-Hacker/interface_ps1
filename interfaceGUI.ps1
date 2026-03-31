@@ -2,9 +2,9 @@
 $basePath    = $env:APPDATA "browser-files"
 $dllPath     = Join-Path $basePath "dependences\Microsoft.Web.WebView2.WinForms.dll"
 
-# DEBUG: Isso vai te mostrar na tela se o arquivo realmente está lá antes de tentar carregar
+# DEBUG: Isso vai te mostrar na tela se o arquivo realmente esta la antes de tentar carregar
 if (-not (Test-Path $dllPath)) {
-    [System.Windows.Forms.MessageBox]::Show("ERRO: DLL não encontrada em: $dllPath")
+    [System.Windows.Forms.MessageBox]::Show("ERRO: DLL nao encontrada em: $dllPath")
     exit
 }
 
@@ -14,18 +14,18 @@ Add-Type -AssemblyName System.Drawing
 
 
 
-# Cria a Janela Principal (o "container")e
+# Cria a Janela Principal (o "container")
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Browser Interface"
 $form.Size = New-Object System.Drawing.Size(800, 600)
 $form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog" # Impede o usuário de redimensionar e quebrar o layout
+$form.FormBorderStyle = "FixedDialog" # Impede o usuario de redimensionar e quebrar o layout
 
 
 $webView = New-Object Microsoft.Web.WebView2.WinForms.WebView2
 $webView.Dock = "Fill"
 
-# Como o runtime está no Windows, não precisamos passar o path local!
+# Como o runtime esta no Windows, nao precisamos passar o path local!
 $webView.EnsureCoreWebView2Async($null) 
 
 # O seu HTML e CSS (O "Visual")
@@ -44,7 +44,7 @@ $htmlContent = @"
 <body>
     <h1>Projeto Browser-Files</h1>
     <p>Interface moderna com HTML e CSS</p>
-    <button class="btn" onclick="window.chrome.webview.postMessage('listar')">Testar Comunicação</button>
+    <button class="btn" onclick="window.chrome.webview.postMessage('listar')">Testar Comunicacao</button>
     <div id="status"></div>
 
     <script>
@@ -57,7 +57,7 @@ $htmlContent = @"
 </html>
 "@
 
-# Lógica de inicialização e comunicação
+# Logica de inicializacao e comunicacao
 $form.Add_Load({
     $webView.EnsureCoreWebView2Async($null)
 })
@@ -67,7 +67,7 @@ $webView.add_CoreWebView2InitializationCompleted({
     $webView.CoreWebView2.NavigateToString($htmlContent)
 })
 
-# Evento: Receber clique do botão HTML no PowerShell
+# Evento: Receber clique do botao HTML no PowerShell
 $webView.add_WebMessageReceived({
     param($sender, $args)
     $mensagem = $args.TryGetWebMessageAsString()
@@ -75,7 +75,7 @@ $webView.add_WebMessageReceived({
     if ($mensagem -eq "listar") {
         # O PowerShell processa algo e manda de volta para o HTML
         $data = Get-Date -Format "HH:mm:ss"
-        $webView.CoreWebView2.PostWebMessageAsString("Botão clicado às $data ! O PowerShell respondeu.")
+        $webView.CoreWebView2.PostWebMessageAsString("Botao clicado as $data ! O PowerShell respondeu.")
     }
 })
 
