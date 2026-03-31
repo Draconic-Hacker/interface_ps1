@@ -20,20 +20,7 @@ $form.Size = New-Object System.Drawing.Size(900, 700)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog" # Impede o usuario de redimensionar e quebrar o layout
 
-
-# Criando o WebView2
-$webView = New-Object Microsoft.Web.WebView2.WinForms.WebView2
-$webView.Dock = [System.Windows.Forms.DockStyle]::Fill
-
-# IMPORTANTE: Inicialização assíncrona
-$form.Add_Load({
-    $webView.EnsureCoreWebView2Async($null)
-})
-
 # AREA DE TESTE DE VISUALIZACAO
-# $webView.add_CoreWebView2InitializationCompleted({
-#     $webView.CoreWebView2.NavigateToString("<h1>Funcionou!</h1><p>O WebView2 está rodando da AppData.</p>")
-# })
 
 # O seu HTML e CSS (O "Visual")
 $htmlContent = @"
@@ -63,26 +50,36 @@ $htmlContent = @"
 </html>
 "@
 
-# # Logica de inicializacao e comunicacao
-$form.Add_Load({
-    $webView.EnsureCoreWebView2Async($null)
-})
+# 1. Cria o objeto visual
+$webView = New-Object Microsoft.Web.WebView2.WinForms.WebView2
+$webView.Dock = [System.Windows.Forms.DockStyle]::Fill
 
-# # Evento: O que acontece quando o WebView2 termina de carregar?
+# 2. EVENTO: O que fazer QUANDO o motor terminar de carregar
 $webView.add_CoreWebView2InitializationCompleted({
-    $webView.CoreWebView2.NavigateToString($htmlContent)
+    param($sender, $args)
+    
+    if ($args.IsSuccess) {
+        # Agora sim o CoreWebView2 existe! Podemos navegar.
+        $webView.CoreWebView2.NavigateToString($htmlContent)
+    } else {
+        [System.Windows.Forms.MessageBox]::Show("Falha ao iniciar o motor WebView2.")
+    }
 })
 
-# # Evento: Receber clique do botao HTML no PowerShell
+# 3. EVENTO: Comunicação (O clique do botão)
 $webView.add_WebMessageReceived({
     param($sender, $args)
-    $mensagem = $args.TryGetWebMessageAsString()
-    
-    if ($mensagem -eq "listar") {
+    $msg = $args.TryGetWebMessageAsString()
+    if ($msg -eq "listar") {
         # O PowerShell processa algo e manda de volta para o HTML
         $data = Get-Date -Format "HH:mm:ss"
-        $webView.CoreWebView2.PostWebMessageAsString("Botao clicado as $data ! O PowerShell respondeu.")
+        $webView.CoreWebView2.PostWebMessageAsString("PowerShell diz: Acoes executadas as $data")
     }
+})
+
+# 4. DISPARA a inicialização quando o formulário abrir
+$form.Add_Load({
+    $webView.EnsureCoreWebView2Async($null)
 })
 
 # Adiciona o navegador na janela e exibe
