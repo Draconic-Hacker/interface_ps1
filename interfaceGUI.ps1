@@ -1,6 +1,6 @@
 # Caminhos (Supondo que estão na AppData)
-$basePath    = Join-Path $env:APPDATA "browser-files"
-$dllPath     = Join-Path $basePath "dependences\Microsoft.Web.WebView2.WinForms.dll"
+$installDir    = Join-Path $env:APPDATA "browser-files"
+$dllPath     = Join-Path $installDir "dependences\Microsoft.Web.WebView2.WinForms.dll"
 
 # DEBUG: Isso vai te mostrar na tela se o arquivo realmente esta la antes de tentar carregar
 if (-not (Test-Path $dllPath)) {
@@ -50,23 +50,11 @@ $htmlContent = @"
 </html>
 "@
 
-# 1. Cria o objeto visual
+# Cria o objeto visual
 $webView = New-Object Microsoft.Web.WebView2.WinForms.WebView2
 $webView.Dock = [System.Windows.Forms.DockStyle]::Fill
 
-# 2. EVENTO: O que fazer QUANDO o motor terminar de carregar
-$webView.add_CoreWebView2InitializationCompleted({
-    param($sender, $args)
-    
-    if ($args.IsSuccess) {
-        # Agora sim o CoreWebView2 existe! Podemos navegar.
-        $webView.CoreWebView2.NavigateToString($htmlContent)
-    } else {
-        [System.Windows.Forms.MessageBox]::Show("Falha ao iniciar o motor WebView2.")
-    }
-})
-
-# 3. EVENTO: Comunicação (O clique do botão)
+# EVENTO: Comunicação (O clique do botão)
 $webView.add_WebMessageReceived({
     param($sender, $args)
     $msg = $args.TryGetWebMessageAsString()
@@ -77,9 +65,29 @@ $webView.add_WebMessageReceived({
     }
 })
 
-# 4. DISPARA a inicialização quando o formulário abrir
+# O evento de sucesso (só adicionado o log de erro real)
+$webView.add_CoreWebView2InitializationCompleted({
+    param($sender, $args)
+    if ($args.IsSuccess) {
+        $webView.CoreWebView2.NavigateToString($htmlContent)
+    } else {
+        # Isso vai nos mostrar o CÓDIGO real do erro se falhar de novo
+        $exception = $args.InitializationException
+        [System.Windows.Forms.MessageBox]::Show("Falha: $($exception.Message)")
+    }
+})
+
+# Define onde o navegador vai guardar o cache/dados
+$userDataFolder = Join-Path $installDir "WebView2_Data"
+if (!(Test-Path $userDataFolder)) { New-Item -ItemType Directory -Path $userDataFolder }
+
+# Cria o ambiente configurado
+$envOptions = [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::CreateAsync($null, $userDataFolder)
+
+# Dispara a inicialização usando essas opções
 $form.Add_Load({
-    $webView.EnsureCoreWebView2Async($null)
+    # Esperamos o resultado da criação do ambiente antes de iniciar o WebView
+    $webView.EnsureCoreWebView2Async($envOptions.Result)
 })
 
 # Adiciona o navegador na janela e exibe
