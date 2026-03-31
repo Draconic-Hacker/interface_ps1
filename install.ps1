@@ -34,7 +34,7 @@ if (-not $isInstalled) {
     $bootstrapperPath = Join-Path $env:TEMP "MicrosoftEdgeWebview2Setup.exe"
     
     # URL oficial do instalador "Evergreen" da Microsoft
-    $urlMotor = "https://go.microsoft.com"
+    $urlMotor = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
     $webClient.DownloadFile($urlMotor, $bootstrapperPath)
     
     Write-Host "Instalando WebView2 Runtime (isso pode levar um minuto)..." -ForegroundColor Cyan
