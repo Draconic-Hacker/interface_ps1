@@ -1,4 +1,4 @@
-# Caminhos (Supondo que estão na AppData)
+# Caminhos (Supondo que estao na AppData)
 $installDir    = Join-Path $env:APPDATA "browser-files"
 $dllPath     = Join-Path $installDir "dependences\Microsoft.Web.WebView2.WinForms.dll"
 
@@ -54,7 +54,7 @@ $htmlContent = @"
 $webView = New-Object Microsoft.Web.WebView2.WinForms.WebView2
 $webView.Dock = [System.Windows.Forms.DockStyle]::Fill
 
-# EVENTO: Comunicação (O clique do botão)
+# EVENTO: Comunicacao (O clique do botao)
 $webView.add_WebMessageReceived({
     param($sender, $args)
     $msg = $args.TryGetWebMessageAsString()
@@ -65,13 +65,13 @@ $webView.add_WebMessageReceived({
     }
 })
 
-# O evento de sucesso (só adicionado o log de erro real)
+# O evento de sucesso (so adicionado o log de erro real)
 $webView.add_CoreWebView2InitializationCompleted({
     param($sender, $args)
     if ($args.IsSuccess) {
         $webView.CoreWebView2.NavigateToString($htmlContent)
     } else {
-        # Isso vai nos mostrar o CÓDIGO real do erro se falhar de novo
+        # Isso vai nos mostrar o CODIGO real do erro se falhar de novo
         $exception = $args.InitializationException
         [System.Windows.Forms.MessageBox]::Show("Falha: $($exception.Message)")
     }
@@ -84,9 +84,9 @@ if (!(Test-Path $userDataFolder)) { New-Item -ItemType Directory -Path $userData
 # Cria o ambiente configurado
 $envOptions = [Microsoft.Web.WebView2.Core.CoreWebView2Environment]::CreateAsync($null, $userDataFolder)
 
-# Dispara a inicialização usando essas opções
+# Dispara a inicializacao usando essas opcoes
 $form.Add_Load({
-    # Esperamos o resultado da criação do ambiente antes de iniciar o WebView
+    # Esperamos o resultado da criacao do ambiente antes de iniciar o WebView
     $webView.EnsureCoreWebView2Async($envOptions.Result)
 })
 
