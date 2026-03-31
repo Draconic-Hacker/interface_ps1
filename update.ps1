@@ -6,9 +6,13 @@ $urlInterface = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1
 
 Write-Host "Fazendo a atualizacao dos arquivos de Browser-Files..." -ForegroundColor Cyan
 
+Remove-Item $interfaceFile -Recurse -Force
+Write-Host "`nBaixando atualizacoes..." -ForegroundColor Yellow
+
+timeout /T 5
 Invoke-WebRequest -Uri $urlInterface -OutFile $interfaceFile
 
-Write-Host "Atualizando o atalho na Area de TRabalho..." -ForegroundColor Cyan
+Write-Host "`nAtualizando o atalho na Area de Trabalho..." -ForegroundColor Cyan
 
 # Remocao do antigo atalho
 
