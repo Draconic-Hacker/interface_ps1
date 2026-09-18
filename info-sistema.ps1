@@ -111,13 +111,17 @@ function Get-InfoVolumes {
     Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
         $totalGB = ConvertTo-GB $_.Size 2
         $livreGB = ConvertTo-GB $_.FreeSpace 2
+
+        $pctLivre = 0
+        if ($_.Size -gt 0) { $pctLivre = [math]::Round(($_.FreeSpace / $_.Size) * 100, 1) }
+
         [PSCustomObject]@{
-            "Unidade"    = $_.DeviceID
-            "Rotulo"     = $_.VolumeName
-            "Sistema Arq"= $_.FileSystem
-            "Total (GB)" = $totalGB
-            "Livre (GB)" = $livreGB
-            "% Livre"    = if ($_.Size -gt 0) { [math]::Round(($_.FreeSpace / $_.Size) * 100, 1) } else { 0 }
+            "Unidade"     = $_.DeviceID
+            "Rotulo"      = $_.VolumeName
+            "Sistema Arq" = $_.FileSystem
+            "Total (GB)"  = $totalGB
+            "Livre (GB)"  = $livreGB
+            "% Livre"     = $pctLivre
         }
     }
 }
@@ -139,18 +143,36 @@ function Get-InfoRede {
 function Get-InfoBiosPlaca {
     $bio = Get-CimInstance Win32_Bios
     $mb  = Get-CimInstance Win32_BaseBoard
-    $tpm = try { (Get-CimInstance -Namespace "root\cimv2\security\microsofttpm" -ClassName Win32_Tpm -ErrorAction Stop) } catch { $null }
+
+    # PowerShell 5.1 nao aceita try/catch como expressao de atribuicao.
+    # Por isso tudo e calculado antes de montar o PSCustomObject.
+    $tpm = $null
+    try {
+        $tpm = Get-CimInstance -Namespace "root\cimv2\security\microsofttpm" `
+                               -ClassName Win32_Tpm -ErrorAction Stop
+    }
+    catch { $tpm = $null }
+
+    $secureBoot = "N/D"
+    try { $secureBoot = [string](Confirm-SecureBootUEFI -ErrorAction Stop) }
+    catch { $secureBoot = "N/D (BIOS legado ou requer admin)" }
+
+    $modoBoot = "N/D"
+    if ($env:firmware_type) { $modoBoot = $env:firmware_type }
+
+    $tpmInfo = "Nao detectado / requer admin"
+    if ($tpm) { $tpmInfo = "Sim - spec $($tpm.SpecVersion)" }
 
     [PSCustomObject]@{
         "BIOS"          = $bio.Name
-        "Versao BIOS"   = ($bio.SMBIOSBIOSVersion)
+        "Versao BIOS"   = $bio.SMBIOSBIOSVersion
         "Data BIOS"     = $bio.ReleaseDate
         "S/N Chassi"    = $bio.SerialNumber
         "Placa-mae"     = "$($mb.Manufacturer) $($mb.Product)"
         "S/N Placa-mae" = $mb.SerialNumber
-        "Modo Boot"     = if ($env:firmware_type) { $env:firmware_type } else { "N/D" }
-        "Secure Boot"   = try { (Confirm-SecureBootUEFI -ErrorAction Stop) } catch { "N/D" }
-        "TPM presente"  = if ($tpm) { "$($tpm.SpecVersion)" } else { "Nao detectado / requer admin" }
+        "Modo Boot"     = $modoBoot
+        "Secure Boot"   = $secureBoot
+        "TPM presente"  = $tpmInfo
     }
 }
 
