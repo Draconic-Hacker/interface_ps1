@@ -49,10 +49,19 @@ function Get-InfoResumo {
     $cpu = Get-CimInstance Win32_Processor
     $gpu = Get-CimInstance Win32_VideoController
     $ram = Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum
+    $csp = Get-CimInstance Win32_ComputerSystemProduct
+
+    # MTM (Machine Type-Model) e MO (SKU / Machine Option) sao campos gravados
+    # na BIOS pelo fabricante. Costumam existir em Lenovo e Dell; em placas
+    # genericas ou outros fabricantes ficam em branco.
+    $mtm = if ($csp.Version)    { $csp.Version }    else { "N/D" }
+    $mo  = if ($csp.SKUNumber)  { $csp.SKUNumber }  else { "N/D" }
 
     [PSCustomObject]@{
         "Marca"    = $cs.Manufacturer
         "Modelo"   = $cs.Model
+        "MTM"      = $mtm
+        "MO"       = $mo
         "S/N"      = $bio.SerialNumber
         "CPU"      = ($cpu.Name -join " | ")
         "GPU"      = ($gpu.Name -join " | ")
@@ -94,10 +103,26 @@ function Get-InfoSO {
     }
 }
 
+function Get-TipoMemoria {
+    param([int]$Codigo)
+
+    # Tabela SMBIOSMemoryType (padrao DMTF). Cobre os codigos mais comuns;
+    # os demais caem no "Desconhecido (codigo N)".
+    switch ($Codigo) {
+        20 { "DDR" }
+        21 { "DDR2" }
+        24 { "DDR3" }
+        26 { "DDR4" }
+        34 { "DDR5" }
+        default { "Desconhecido (codigo $Codigo)" }
+    }
+}
+
 function Get-InfoMemoria {
     Get-CimInstance Win32_PhysicalMemory | ForEach-Object {
         [PSCustomObject]@{
             "Slot"       = $_.DeviceLocator
+            "Tipo"       = Get-TipoMemoria $_.SMBIOSMemoryType
             "Capac.(GB)" = ConvertTo-GB $_.Capacity
             "Vel.(MHz)"  = $_.Speed
             "Fabricante" = $_.Manufacturer
@@ -180,8 +205,51 @@ function Get-InfoBiosPlaca {
 
 #region ---------- Exportacao ----------
 
+function Select-PastaDestino {
+    # Abre o popup do Windows para escolher a pasta. Retorna o caminho ou $null se cancelar.
+    $pasta = $null
+    $dono  = $null
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+
+        # Janela "dona" invisivel e TopMost: garante que o popup apareca na frente do terminal
+        $dono = New-Object System.Windows.Forms.Form
+        $dono.TopMost       = $true
+        $dono.ShowInTaskbar = $false
+        $dono.StartPosition = "CenterScreen"
+
+        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dlg.Description         = "Selecione a pasta onde o relatorio sera salvo"
+        $dlg.ShowNewFolderButton = $true
+        $dlg.SelectedPath        = [Environment]::GetFolderPath("Desktop")
+
+        $res = $dlg.ShowDialog($dono)
+        if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
+            $pasta = $dlg.SelectedPath
+        }
+    }
+    catch {
+        # Sem interface grafica (ex.: Server Core / sessao remota restrita): pede o caminho por texto
+        Write-Host "  Nao foi possivel abrir a janela de selecao." -ForegroundColor Yellow
+        $digitado = Read-Host "  Digite o caminho da pasta (ENTER para cancelar)"
+        if ($digitado) { $pasta = $digitado.Trim('"') }
+    }
+    finally {
+        if ($dono) { $dono.Dispose() }
+    }
+    return $pasta
+}
+
 function Export-Relatorio {
-    $destino = Join-Path ([Environment]::GetFolderPath("Desktop")) `
+    param([Parameter(Mandatory)][string]$Pasta)
+
+    if (-not (Test-Path -LiteralPath $Pasta -PathType Container)) {
+        Write-Host ""
+        Write-Host "  Pasta nao encontrada: $Pasta" -ForegroundColor Red
+        return
+    }
+
+    $destino = Join-Path $Pasta `
                          ("Inventario_{0}_{1:yyyy-MM-dd_HHmm}.txt" -f $env:COMPUTERNAME, (Get-Date))
 
     $conteudo = @()
@@ -195,10 +263,61 @@ function Export-Relatorio {
     $conteudo += "--- VOLUMES ---";           $conteudo += (Get-InfoVolumes    | Format-Table -AutoSize | Out-String)
     $conteudo += "--- REDE ---";              $conteudo += (Get-InfoRede       | Format-List   | Out-String)
 
-    $conteudo | Out-File -FilePath $destino -Encoding UTF8
-    Write-Host ""
-    Write-Host "Relatorio salvo em:" -ForegroundColor Green
-    Write-Host "  $destino" -ForegroundColor White
+    try {
+        $conteudo | Out-File -LiteralPath $destino -Encoding UTF8 -ErrorAction Stop
+        Write-Host ""
+        Write-Host "  Relatorio salvo em:" -ForegroundColor Green
+        Write-Host "  $destino" -ForegroundColor White
+    }
+    catch {
+        Write-Host ""
+        Write-Host "  Falha ao salvar o relatorio em: $Pasta" -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkRed
+        Write-Host "  Dica: escolha outra pasta (sem restricao de gravacao)." -ForegroundColor Yellow
+    }
+}
+
+function Show-SubMenuExportar {
+    $voltar = $false
+    do {
+        Clear-Host
+        Write-Titulo "BAIXAR RELATORIO"
+        Write-Host ""
+        Write-Host "   [1] Exportar para a Area de Trabalho"
+        Write-Host "   [2] Selecionar local de download (abre janela)"
+        Write-Host ""
+        Write-Host "   [0] Voltar ao menu principal" -ForegroundColor DarkGray
+        Write-Host ""
+
+        $sub = Read-Host "   Escolha uma opcao"
+
+        switch ($sub) {
+            "1" {
+                Export-Relatorio -Pasta ([Environment]::GetFolderPath("Desktop"))
+                Pausar
+                $voltar = $true
+            }
+            "2" {
+                Write-Host ""
+                Write-Host "  Abrindo janela de selecao..." -ForegroundColor DarkGray
+                $pasta = Select-PastaDestino
+                if ($pasta) {
+                    Export-Relatorio -Pasta $pasta
+                }
+                else {
+                    Write-Host ""
+                    Write-Host "  Nenhuma pasta selecionada. Operacao cancelada." -ForegroundColor Yellow
+                }
+                Pausar
+                $voltar = $true
+            }
+            "0" { $voltar = $true }
+            default {
+                Write-Host "  Opcao invalida." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    } while (-not $voltar)
 }
 
 #endregion
@@ -223,7 +342,7 @@ function Show-Menu {
     Write-Host "   [5] Discos fisicos e volumes"
     Write-Host "   [6] Rede (IP, MAC, gateway, DNS)"
     Write-Host "   [7] TUDO na tela"
-    Write-Host "   [8] Exportar relatorio para a Area de Trabalho"
+    Write-Host "   [8] Baixar relatorio (Area de Trabalho ou local a escolher)"
     Write-Host ""
     Write-Host "   [0] Sair" -ForegroundColor DarkGray
     Write-Host ""
@@ -278,13 +397,13 @@ do {
             Pausar
         }
         "8" {
-            Write-Titulo "EXPORTANDO"
-            Export-Relatorio
-            Pausar
+            Show-SubMenuExportar
         }
         "0" {
             Write-Host ""
             Write-Host "  Encerrando..." -ForegroundColor DarkGray
+            Start-Sleep -Milliseconds 800
+            exit
         }
         default {
             Write-Host "  Opcao invalida." -ForegroundColor Red
