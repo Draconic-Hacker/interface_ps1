@@ -201,6 +201,387 @@ function Get-InfoBiosPlaca {
     }
 }
 
+# ---------- AnyDesk ----------
+
+function Read-AnyDeskId {
+    # Le o ad.anynet.id de um system.conf. Retorna o ID ou $null.
+    param([string]$Caminho)
+
+    if (-not (Test-Path -LiteralPath $Caminho)) { return $null }
+
+    $linha = $null
+    try {
+        $linha = Get-Content -LiteralPath $Caminho -ErrorAction Stop |
+                 Select-String -Pattern '^\s*ad\.anynet\.id\s*=' |
+                 Select-Object -First 1
+    }
+    catch { return $null }
+
+    if (-not $linha) { return $null }
+    return ($linha.Line -split "=", 2)[1].Trim()
+}
+
+function Get-InfoAnyDesk {
+    # Instalado : %ProgramData%\AnyDesk\system.conf
+    # Portable  : %APPDATA%\AnyDesk\system.conf (perfil de quem esta rodando o script)
+    $instalado = Read-AnyDeskId -Caminho (Join-Path $env:ProgramData "AnyDesk\system.conf")
+    $portable  = Read-AnyDeskId -Caminho (Join-Path $env:APPDATA     "AnyDesk\system.conf")
+
+    if (-not $instalado) { $instalado = "Nao encontrado" }
+    if (-not $portable)  { $portable  = "Nao encontrado" }
+
+    [PSCustomObject]@{
+        "AnyDesk instalado" = $instalado
+        "AnyDesk portable"  = $portable
+    }
+}
+
+# ---------- Usuarios ----------
+
+function Get-AdminsLocais {
+    # Retorna os membros do grupo Administradores local (MAQUINA\usuario, DOMINIO\usuario...).
+    # O grupo e localizado pelo SID S-1-5-32-544, porque o NOME muda com o idioma do Windows
+    # (Administrators / Administradores).
+    $nomes = New-Object System.Collections.ArrayList
+
+    $nomeGrupo = $null
+    try {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-544")
+        $nomeGrupo = ($sid.Translate([System.Security.Principal.NTAccount]).Value -split "\\")[-1]
+    }
+    catch { $nomeGrupo = $null }
+
+    if (-not $nomeGrupo) { return }
+
+    try {
+        foreach ($m in (Get-LocalGroupMember -Group $nomeGrupo -ErrorAction Stop)) {
+            [void]$nomes.Add([string]$m.Name)
+        }
+    }
+    catch {
+        # Fallback: Get-LocalGroupMember falha com contas Azure AD / SIDs orfaos.
+        # 'net localgroup' lista os membros entre a linha de tracos e a mensagem final (localizada).
+        $nomes.Clear()
+        $saida  = & net.exe localgroup $nomeGrupo 2>$null
+        $linhas = @($saida | ForEach-Object { ("" + $_).Trim() })
+
+        $ini = -1
+        for ($i = 0; $i -lt $linhas.Count; $i++) {
+            if ($linhas[$i] -match '^-{5,}$') { $ini = $i; break }
+        }
+        if ($ini -ge 0) {
+            $fim = $linhas.Count - 1
+            while ($fim -gt $ini -and $linhas[$fim] -eq "") { $fim-- }
+            for ($i = $ini + 1; $i -lt $fim; $i++) {
+                if ($linhas[$i]) { [void]$nomes.Add($linhas[$i]) }
+            }
+        }
+    }
+
+    return $nomes
+}
+
+function Get-InfoUsuarios {
+    $prefixo      = "$env:COMPUTERNAME\"
+    $adminsLocais = @{}
+    $externos     = New-Object System.Collections.ArrayList
+
+    foreach ($n in @(Get-AdminsLocais)) {
+        if ($n.StartsWith($prefixo, [StringComparison]::OrdinalIgnoreCase)) {
+            $adminsLocais[$n.Substring($prefixo.Length).ToLower()] = $true
+        }
+        elseif ($n.Contains("\")) {
+            [void]$externos.Add($n)
+        }
+        else {
+            $adminsLocais[$n.ToLower()] = $true
+        }
+    }
+
+    $locais = @()
+    try { $locais = @(Get-LocalUser -ErrorAction Stop) }
+    catch { $locais = @() }
+
+    $linhas = New-Object System.Collections.ArrayList
+
+    foreach ($u in $locais) {
+        $tipo = "Comum"
+        if ($adminsLocais.ContainsKey($u.Name.ToLower())) { $tipo = "Administrador" }
+
+        $ativo = "Nao"
+        if ($u.Enabled) { $ativo = "Sim" }
+
+        $logon = "Nunca"
+        if ($u.LastLogon) { $logon = $u.LastLogon.ToString("dd/MM/yyyy HH:mm") }
+
+        [void]$linhas.Add([PSCustomObject]@{
+            "Usuario"      = $u.Name
+            "Tipo"         = $tipo
+            "Ativo"        = $ativo
+            "Origem"       = "Local"
+            "Ultimo logon" = $logon
+        })
+    }
+
+    # Contas/grupos de dominio ou Azure AD que tambem sao administradores desta maquina
+    foreach ($n in $externos) {
+        [void]$linhas.Add([PSCustomObject]@{
+            "Usuario"      = $n
+            "Tipo"         = "Administrador"
+            "Ativo"        = "N/D"
+            "Origem"       = "Dominio / Azure AD"
+            "Ultimo logon" = "N/D"
+        })
+    }
+
+    return $linhas
+}
+
+function Get-ResumoUsuarios {
+    param($Usuarios)
+    $u      = @($Usuarios)
+    $ativos = @($u | Where-Object { $_.Ativo -eq "Sim" }).Count
+    $adms   = @($u | Where-Object { $_.Tipo -eq "Administrador" }).Count
+    return ("Total: {0} | Ativos: {1} | Administradores: {2}" -f $u.Count, $ativos, $adms)
+}
+
+function Show-InfoUsuarios {
+    $u = @(Get-InfoUsuarios)
+    if ($u.Count -eq 0) {
+        Write-Host "  Nao foi possivel listar os usuarios desta maquina." -ForegroundColor Yellow
+        return
+    }
+    $u | Format-Table -AutoSize
+    Write-Host ("  " + (Get-ResumoUsuarios -Usuarios $u)) -ForegroundColor Green
+}
+
+# ---------- Aplicativos instalados ----------
+
+function Get-InfoApps {
+    # Fonte 1: Registro (HKLM 64-bit, HKLM 32-bit, HKCU) -> programas tradicionais
+    # Fonte 2: Get-AppxPackage -> apps da Microsoft Store (UWP) do usuario atual
+    # Nao usa Win32_Product (so MSI, lento e dispara reconfiguracao de pacotes) nem winget (texto, nem sempre instalado).
+    $lista  = New-Object System.Collections.ArrayList
+    $vistos = @{}
+
+    $chaves = @(
+        [PSCustomObject]@{ Caminho = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*";             Origem = "Win32 (64-bit)" },
+        [PSCustomObject]@{ Caminho = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"; Origem = "Win32 (32-bit)" },
+        [PSCustomObject]@{ Caminho = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*";             Origem = "Usuario atual" }
+    )
+
+    foreach ($k in $chaves) {
+        $itens = Get-ItemProperty -Path $k.Caminho -ErrorAction SilentlyContinue
+        foreach ($item in $itens) {
+            if (-not $item.DisplayName)       { continue }
+            if ($item.SystemComponent -eq 1)  { continue }   # componentes ocultos
+            if ($item.ParentKeyName)          { continue }   # atualizacoes/patches
+
+            $id = ("{0}|{1}" -f $item.DisplayName, $item.DisplayVersion).ToLower()
+            if ($vistos.ContainsKey($id)) { continue }
+            $vistos[$id] = $true
+
+            $data = ""
+            $bruto = [string]$item.InstallDate
+            if ($bruto -match '^\d{8}$') {
+                $data = "{0}/{1}/{2}" -f $bruto.Substring(6, 2), $bruto.Substring(4, 2), $bruto.Substring(0, 4)
+            }
+
+            [void]$lista.Add([PSCustomObject]@{
+                "Nome"         = $item.DisplayName
+                "Versao"       = [string]$item.DisplayVersion
+                "Fabricante"   = [string]$item.Publisher
+                "Instalado em" = $data
+                "Origem"       = $k.Origem
+            })
+        }
+    }
+
+    $pacotes = @()
+    try {
+        $pacotes = @(Get-AppxPackage -ErrorAction Stop |
+            Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage -and $_.SignatureKind -ne "System" })
+    }
+    catch { $pacotes = @() }
+
+    foreach ($p in $pacotes) {
+        $fab = ""
+        if ($p.Publisher -match 'CN=([^,]+)') { $fab = $Matches[1] }
+
+        [void]$lista.Add([PSCustomObject]@{
+            "Nome"         = $p.Name
+            "Versao"       = [string]$p.Version
+            "Fabricante"   = $fab
+            "Instalado em" = ""
+            "Origem"       = "Store (UWP)"
+        })
+    }
+
+    return ($lista | Sort-Object Nome)
+}
+
+function Get-ResumoApps {
+    param($Apps)
+    $a     = @($Apps)
+    $store = @($a | Where-Object { $_.Origem -like "Store*" }).Count
+    return ("Total: {0} | Tradicionais (Win32): {1} | Apps modernos (Store/Windows): {2}" -f $a.Count, ($a.Count - $store), $store)
+}
+
+function Show-InfoAppsLista {
+    # Lista completa de uma vez (usada na opcao "TUDO na tela")
+    $apps = @(Get-InfoApps)
+    $apps | Format-Table -AutoSize
+    Write-Host ("  " + (Get-ResumoApps -Apps $apps)) -ForegroundColor Green
+}
+
+function Show-EscolhaColunas {
+    # Tela para ligar/desligar colunas opcionais da lista de aplicativos
+    param($Colunas)
+
+    $voltar = $false
+    do {
+        Clear-Host
+        Write-Titulo "COLUNAS DA LISTA DE APLICATIVOS"
+        Write-Host ""
+        Write-Host "   Nome e Versao sempre aparecem." -ForegroundColor DarkGray
+        Write-Host ""
+        for ($i = 0; $i -lt $Colunas.Count; $i++) {
+            $box = "[ ]"
+            if ($Colunas[$i].Ativa) { $box = "[x]" }
+            Write-Host ("   {0}) {1} {2}" -f ($i + 1), $box, $Colunas[$i].Nome)
+        }
+        Write-Host ""
+        Write-Host "   Digite o(s) numero(s) para marcar/desmarcar (ex: 1,3)   [ENTER] Voltar" -ForegroundColor DarkGray
+        Write-Host ""
+
+        $entrada = (Read-Host "   Opcao").Trim()
+
+        if ($entrada -eq "") {
+            $voltar = $true
+        }
+        else {
+            foreach ($tok in ($entrada -split "[,; ]+")) {
+                $n = 0
+                if ([int]::TryParse($tok, [ref]$n) -and $n -ge 1 -and $n -le $Colunas.Count) {
+                    $Colunas[$n - 1].Ativa = (-not $Colunas[$n - 1].Ativa)
+                }
+            }
+        }
+    } while (-not $voltar)
+}
+
+function Show-InfoApps {
+    # Lista paginada de aplicativos, com busca por nome e colunas opcionais
+    param([int]$ItensPorPagina = 10)
+
+    $apps = @(Get-InfoApps)
+    if ($apps.Count -eq 0) {
+        Write-Host "  Nenhum aplicativo encontrado." -ForegroundColor Yellow
+        return
+    }
+
+    $colunas = New-Object System.Collections.ArrayList
+    foreach ($nomeCol in @("Fabricante", "Instalado em", "Origem")) {
+        [void]$colunas.Add([PSCustomObject]@{ Nome = $nomeCol; Ativa = $false })
+    }
+
+    $busca  = ""
+    $pagina = 1
+    $sair   = $false
+
+    do {
+        # Aplica a busca (comparacao literal, sem curingas)
+        $visiveis = $apps
+        if ($busca -ne "") {
+            $visiveis = @($apps | Where-Object {
+                $_.Nome.IndexOf($busca, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            })
+        }
+
+        $total   = $visiveis.Count
+        $paginas = [int][Math]::Ceiling([double]$total / $ItensPorPagina)
+        if ($paginas -lt 1)        { $paginas = 1 }
+        if ($pagina -gt $paginas)  { $pagina = $paginas }
+        if ($pagina -lt 1)         { $pagina = 1 }
+
+        # Colunas: Nome e Versao fixas + as opcionais marcadas
+        $props = @("Nome", "Versao")
+        foreach ($c in $colunas) {
+            if ($c.Ativa) { $props += $c.Nome }
+        }
+
+        Clear-Host
+        Write-Titulo ("APLICATIVOS INSTALADOS - Pagina {0} de {1}" -f $pagina, $paginas)
+
+        $info = "Total: $total"
+        if ($busca -ne "") { $info += " (busca: '$busca' | geral: $($apps.Count))" }
+        Write-Host ("  " + $info) -ForegroundColor DarkGray
+        Write-Host ""
+
+        if ($total -eq 0) {
+            Write-Host "  Nenhum aplicativo corresponde a busca." -ForegroundColor Yellow
+        }
+        else {
+            $ini = ($pagina - 1) * $ItensPorPagina
+            $visiveis |
+                Select-Object -Skip $ini -First $ItensPorPagina |
+                Select-Object -Property $props |
+                Format-Table -AutoSize -Wrap
+        }
+
+        Write-Host ""
+        Write-Host "   [N] Proxima   [P] Anterior   [G] Ir para pagina   [Q] Sair" -ForegroundColor Yellow
+        Write-Host ("   [C] Colunas   [B] Buscar por nome   [T] Itens por pagina (atual: {0})" -f $ItensPorPagina) -ForegroundColor Yellow
+        Write-Host "   (ENTER = proxima pagina)" -ForegroundColor DarkGray
+        Write-Host ""
+
+        $op = (Read-Host "   Opcao").Trim()
+
+        if ($op -eq "" -or $op -eq "N") {
+            if ($pagina -lt $paginas) { $pagina++ }
+        }
+        elseif ($op -eq "P") {
+            if ($pagina -gt 1) { $pagina-- }
+        }
+        elseif ($op -eq "G") {
+            $alvo = 0
+            $txt  = Read-Host "   Numero da pagina (1 a $paginas)"
+            if ([int]::TryParse($txt, [ref]$alvo) -and $alvo -ge 1 -and $alvo -le $paginas) {
+                $pagina = $alvo
+            }
+            else {
+                Write-Host "  Pagina invalida." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+        elseif ($op -eq "C") {
+            Show-EscolhaColunas -Colunas $colunas
+        }
+        elseif ($op -eq "B") {
+            $busca  = (Read-Host "   Texto a buscar no nome (ENTER limpa a busca)").Trim()
+            $pagina = 1
+        }
+        elseif ($op -eq "T") {
+            $qtd = 0
+            $txt = Read-Host "   Itens por pagina (5 a 50)"
+            if ([int]::TryParse($txt, [ref]$qtd) -and $qtd -ge 5 -and $qtd -le 50) {
+                $ItensPorPagina = $qtd
+                $pagina = 1
+            }
+            else {
+                Write-Host "  Valor invalido." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+        elseif ($op -eq "Q" -or $op -eq "0") {
+            $sair = $true
+        }
+    } while (-not $sair)
+
+    Clear-Host
+    Write-Host ("  " + (Get-ResumoApps -Apps $apps)) -ForegroundColor Green
+}
+
 #endregion
 
 #region ---------- Exportacao ----------
@@ -262,6 +643,18 @@ function Export-Relatorio {
     $conteudo += "--- MEMORIA ---";           $conteudo += (Get-InfoMemoria    | Format-Table -AutoSize | Out-String)
     $conteudo += "--- VOLUMES ---";           $conteudo += (Get-InfoVolumes    | Format-Table -AutoSize | Out-String)
     $conteudo += "--- REDE ---";              $conteudo += (Get-InfoRede       | Format-List   | Out-String)
+    $conteudo += "--- ACESSO REMOTO (ANYDESK) ---"; $conteudo += (Get-InfoAnyDesk | Format-List | Out-String)
+
+    $usuariosRel = @(Get-InfoUsuarios)
+    $conteudo += "--- USUARIOS ---"
+    $conteudo += ([string]($usuariosRel | Format-Table -AutoSize | Out-String -Width 250)).TrimEnd()
+    $conteudo += (Get-ResumoUsuarios -Usuarios $usuariosRel)
+    $conteudo += ""
+
+    $appsRel = @(Get-InfoApps)
+    $conteudo += "--- APLICATIVOS INSTALADOS ---"
+    $conteudo += ([string]($appsRel | Format-Table -AutoSize | Out-String -Width 250)).TrimEnd()
+    $conteudo += (Get-ResumoApps -Apps $appsRel)
 
     try {
         $conteudo | Out-File -LiteralPath $destino -Encoding UTF8 -ErrorAction Stop
@@ -288,7 +681,8 @@ function Get-CatalogoInventario {
     $planas = @(
         [PSCustomObject]@{ Titulo = "Resumo";                 Dados = (Get-InfoResumo) },
         [PSCustomObject]@{ Titulo = "Sistema operacional";    Dados = (Get-InfoSO) },
-        [PSCustomObject]@{ Titulo = "BIOS / Placa-mae / TPM"; Dados = (Get-InfoBiosPlaca) }
+        [PSCustomObject]@{ Titulo = "BIOS / Placa-mae / TPM"; Dados = (Get-InfoBiosPlaca) },
+        [PSCustomObject]@{ Titulo = "Acesso remoto (AnyDesk)"; Dados = (Get-InfoAnyDesk) }
     )
 
     foreach ($p in $planas) {
@@ -308,16 +702,21 @@ function Get-CatalogoInventario {
         })
     }
 
+    $usuarios = @(Get-InfoUsuarios)
+    $apps     = @(Get-InfoApps)
+
     $tabelas = @(
         [PSCustomObject]@{ Titulo = "Memoria RAM (por slot)";  Formato = "tabela"; Dados = @(Get-InfoMemoria) },
         [PSCustomObject]@{ Titulo = "Volumes de disco";        Formato = "tabela"; Dados = @(Get-InfoVolumes) },
-        [PSCustomObject]@{ Titulo = "Rede";                    Formato = "lista";  Dados = @(Get-InfoRede) }
+        [PSCustomObject]@{ Titulo = "Rede";                    Formato = "lista";  Dados = @(Get-InfoRede) },
+        [PSCustomObject]@{ Titulo = "Usuarios da maquina"; Formato = "tabela"; Dados = $usuarios; Rodape = (Get-ResumoUsuarios -Usuarios $usuarios) },
+        [PSCustomObject]@{ Titulo = "Aplicativos instalados"; Formato = "tabela"; Dados = $apps; Rodape = (Get-ResumoApps -Apps $apps) }
     )
 
     foreach ($t in $tabelas) {
         [void]$catalogo.Add([PSCustomObject]@{
             Tipo = "tabela"; Titulo = $t.Titulo; Formato = $t.Formato
-            Campos = $null; Dados = $t.Dados; Marcado = $true
+            Campos = $null; Dados = $t.Dados; Marcado = $true; Rodape = $t.Rodape
         })
     }
 
@@ -352,11 +751,16 @@ function Set-MarcacaoGeral {
 function Set-MarcacaoIdentificacao {
     # Atalho: so os dados de identificacao da maquina (patrimonio / chamado)
     param($Catalogo)
-    $nomes = @("Marca", "Modelo", "MTM", "MO", "S/N")
+    $mapa = @{
+        "Resumo"                  = @("Marca", "Modelo", "MTM", "MO", "S/N")
+        "Acesso remoto (AnyDesk)" = @("AnyDesk instalado", "AnyDesk portable")
+    }
     foreach ($s in $Catalogo) {
         if ($s.Tipo -eq "campos") {
             foreach ($c in $s.Campos) {
-                $c.Marcado = (($s.Titulo -eq "Resumo") -and ($nomes -contains $c.Nome))
+                $nomes = @()
+                if ($mapa.ContainsKey($s.Titulo)) { $nomes = $mapa[$s.Titulo] }
+                $c.Marcado = ($nomes -contains $c.Nome)
             }
         }
         else { $s.Marcado = $false }
@@ -448,7 +852,7 @@ function Show-SelecaoInventario {
         Write-Host ("   Itens selecionados: {0}" -f $total) -ForegroundColor Cyan
         Write-Host ""
         Write-Host "   [numero] Abrir secao (campos) ou marcar/desmarcar (blocos)"
-        Write-Host "   [A] Marcar tudo   [L] Limpar tudo   [B] So identificacao (marca, modelo, MTM, MO, S/N)"
+        Write-Host "   [A] Marcar tudo   [L] Limpar tudo   [B] So identificacao (marca, modelo, MTM, MO, S/N, AnyDesk)"
         Write-Host "   [G] Gerar relatorio   [0] Cancelar" -ForegroundColor DarkGray
         Write-Host ""
 
@@ -552,6 +956,7 @@ function Export-RelatorioPersonalizado {
             else {
                 [void]$linhas.Add(($s.Dados | Format-Table -AutoSize | Out-String -Width 250).TrimEnd())
             }
+            if ($s.Rodape) { [void]$linhas.Add([string]$s.Rodape) }
             [void]$linhas.Add("")
         }
     }
@@ -573,7 +978,7 @@ function Export-RelatorioPersonalizado {
 function Invoke-InventarioPersonalizado {
     Write-Titulo "INVENTARIO PERSONALIZADO"
     Write-Host ""
-    Write-Host "  Coletando informacoes desta maquina..." -ForegroundColor DarkGray
+    Write-Host "  Coletando informacoes desta maquina (a lista de aplicativos pode levar alguns segundos)..." -ForegroundColor DarkGray
 
     $catalogo = Get-CatalogoInventario
 
@@ -666,8 +1071,11 @@ function Show-Menu {
     Write-Host "   [4] Memoria RAM (por slot)"
     Write-Host "   [5] Discos fisicos e volumes"
     Write-Host "   [6] Rede (IP, MAC, gateway, DNS)"
-    Write-Host "   [7] TUDO na tela"
-    Write-Host "   [8] Baixar relatorio (Area de Trabalho ou local a escolher)"
+    Write-Host "   [7] Usuarios da maquina (local / administrador)"
+    Write-Host "   [8] Aplicativos instalados (lista paginada)"
+    Write-Host "   [9] AnyDesk (codigo de acesso)"
+    Write-Host "   [10] TUDO na tela"
+    Write-Host "   [11] Baixar relatorio (Area de Trabalho ou local a escolher)"
     Write-Host ""
     Write-Host "   [0] Sair" -ForegroundColor DarkGray
     Write-Host ""
@@ -713,15 +1121,34 @@ do {
             Pausar
         }
         "7" {
+            Write-Titulo "USUARIOS DA MAQUINA"
+            Show-InfoUsuarios
+            Pausar
+        }
+        "8" {
+            Write-Titulo "APLICATIVOS INSTALADOS"
+            Write-Host "  Coletando (pode levar alguns segundos)..." -ForegroundColor DarkGray
+            Show-InfoApps
+            Pausar
+        }
+        "9" {
+            Write-Titulo "ANYDESK"
+            Get-InfoAnyDesk | Format-List
+            Pausar
+        }
+        "10" {
             Write-Titulo "RESUMO GERAL";          Get-InfoResumo    | Format-List
             Write-Titulo "SISTEMA OPERACIONAL";   Get-InfoSO        | Format-List
             Write-Titulo "BIOS / PLACA-MAE";      Get-InfoBiosPlaca | Format-List
             Write-Titulo "MEMORIA RAM";           Get-InfoMemoria   | Format-Table -AutoSize
             Write-Titulo "VOLUMES";               Get-InfoVolumes   | Format-Table -AutoSize
             Write-Titulo "REDE";                  Get-InfoRede      | Format-List
+            Write-Titulo "ACESSO REMOTO (ANYDESK)"; Get-InfoAnyDesk | Format-List
+            Write-Titulo "USUARIOS DA MAQUINA";    Show-InfoUsuarios
+            Write-Titulo "APLICATIVOS INSTALADOS"; Show-InfoAppsLista
             Pausar
         }
-        "8" {
+        "11" {
             Show-SubMenuExportar
         }
         "0" {
