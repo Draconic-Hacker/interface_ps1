@@ -277,14 +277,334 @@ function Export-Relatorio {
     }
 }
 
+#region ---------- Inventario personalizado (prototipo) ----------
+
+function Get-CatalogoInventario {
+    # Coleta tudo uma vez e monta o catalogo de secoes:
+    #   Tipo "campos" : objeto plano (Nome = Valor); o usuario marca campo a campo
+    #   Tipo "tabela" : varias linhas (slots, volumes, adaptadores); marca o bloco inteiro
+    $catalogo = New-Object System.Collections.ArrayList
+
+    $planas = @(
+        [PSCustomObject]@{ Titulo = "Resumo";                 Dados = (Get-InfoResumo) },
+        [PSCustomObject]@{ Titulo = "Sistema operacional";    Dados = (Get-InfoSO) },
+        [PSCustomObject]@{ Titulo = "BIOS / Placa-mae / TPM"; Dados = (Get-InfoBiosPlaca) }
+    )
+
+    foreach ($p in $planas) {
+        $campos = New-Object System.Collections.ArrayList
+        foreach ($prop in $p.Dados.PSObject.Properties) {
+            $valor = $prop.Value
+            if ($valor -is [datetime]) { $valor = $valor.ToString("dd/MM/yyyy HH:mm") }
+            [void]$campos.Add([PSCustomObject]@{
+                Nome    = $prop.Name
+                Valor   = [string]$valor
+                Marcado = $true
+            })
+        }
+        [void]$catalogo.Add([PSCustomObject]@{
+            Tipo = "campos"; Titulo = $p.Titulo; Formato = "lista"
+            Campos = $campos; Dados = $null; Marcado = $true
+        })
+    }
+
+    $tabelas = @(
+        [PSCustomObject]@{ Titulo = "Memoria RAM (por slot)";  Formato = "tabela"; Dados = @(Get-InfoMemoria) },
+        [PSCustomObject]@{ Titulo = "Volumes de disco";        Formato = "tabela"; Dados = @(Get-InfoVolumes) },
+        [PSCustomObject]@{ Titulo = "Rede";                    Formato = "lista";  Dados = @(Get-InfoRede) }
+    )
+
+    foreach ($t in $tabelas) {
+        [void]$catalogo.Add([PSCustomObject]@{
+            Tipo = "tabela"; Titulo = $t.Titulo; Formato = $t.Formato
+            Campos = $null; Dados = $t.Dados; Marcado = $true
+        })
+    }
+
+    # A virgula impede o PowerShell de "desenrolar" o ArrayList ao retornar
+    return ,$catalogo
+}
+
+function Get-TotalMarcado {
+    param($Catalogo)
+    $total = 0
+    foreach ($s in $Catalogo) {
+        if ($s.Tipo -eq "campos") {
+            $total += @($s.Campos | Where-Object { $_.Marcado }).Count
+        }
+        elseif ($s.Marcado) {
+            $total += 1
+        }
+    }
+    return $total
+}
+
+function Set-MarcacaoGeral {
+    param($Catalogo, [bool]$Valor)
+    foreach ($s in $Catalogo) {
+        if ($s.Tipo -eq "campos") {
+            foreach ($c in $s.Campos) { $c.Marcado = $Valor }
+        }
+        else { $s.Marcado = $Valor }
+    }
+}
+
+function Set-MarcacaoIdentificacao {
+    # Atalho: so os dados de identificacao da maquina (patrimonio / chamado)
+    param($Catalogo)
+    $nomes = @("Marca", "Modelo", "MTM", "MO", "S/N")
+    foreach ($s in $Catalogo) {
+        if ($s.Tipo -eq "campos") {
+            foreach ($c in $s.Campos) {
+                $c.Marcado = (($s.Titulo -eq "Resumo") -and ($nomes -contains $c.Nome))
+            }
+        }
+        else { $s.Marcado = $false }
+    }
+}
+
+function Show-SelecaoCampos {
+    param($Secao)
+    $voltar = $false
+    do {
+        Clear-Host
+        Write-Titulo ("CAMPOS - " + $Secao.Titulo.ToUpper())
+        Write-Host ""
+        for ($i = 0; $i -lt $Secao.Campos.Count; $i++) {
+            $c = $Secao.Campos[$i]
+            $box = "[ ]"
+            $cor = "DarkGray"
+            if ($c.Marcado) { $box = "[x]"; $cor = "White" }
+
+            $v = $c.Valor
+            if ($v.Length -gt 45) { $v = $v.Substring(0, 42) + "..." }
+
+            Write-Host ("   {0,2}) {1} {2} : {3}" -f ($i + 1), $box, $c.Nome.PadRight(15), $v) -ForegroundColor $cor
+        }
+        Write-Host ""
+        Write-Host "   Digite o(s) numero(s) para marcar/desmarcar (ex: 1,3,5)"
+        Write-Host "   [A] Marcar todos   [L] Limpar todos   [ENTER] Voltar" -ForegroundColor DarkGray
+        Write-Host ""
+
+        $entrada = (Read-Host "   Opcao").Trim()
+
+        if ($entrada -eq "" -or $entrada -eq "0" -or $entrada -eq "V") {
+            $voltar = $true
+        }
+        elseif ($entrada -eq "A") {
+            foreach ($c in $Secao.Campos) { $c.Marcado = $true }
+        }
+        elseif ($entrada -eq "L") {
+            foreach ($c in $Secao.Campos) { $c.Marcado = $false }
+        }
+        else {
+            foreach ($tok in ($entrada -split "[,; ]+")) {
+                $n = 0
+                if ([int]::TryParse($tok, [ref]$n) -and $n -ge 1 -and $n -le $Secao.Campos.Count) {
+                    $item = $Secao.Campos[$n - 1]
+                    $item.Marcado = (-not $item.Marcado)
+                }
+            }
+        }
+    } while (-not $voltar)
+}
+
+function Show-SelecaoInventario {
+    # Retorna $true se o usuario confirmou a geracao, $false se cancelou
+    param($Catalogo)
+
+    $resultado = $false
+    $fim = $false
+
+    do {
+        Clear-Host
+        Write-Titulo "INVENTARIO PERSONALIZADO - O QUE ENTRA NO RELATORIO"
+        Write-Host ""
+
+        for ($i = 0; $i -lt $Catalogo.Count; $i++) {
+            $s = $Catalogo[$i]
+
+            if ($s.Tipo -eq "campos") {
+                $qtd  = @($s.Campos | Where-Object { $_.Marcado }).Count
+                $info = "{0}/{1} campos  >" -f $qtd, $s.Campos.Count
+                $box  = "( )"
+                if ($qtd -eq $s.Campos.Count) { $box = "(x)" }
+                elseif ($qtd -gt 0)           { $box = "(~)" }
+            }
+            else {
+                $info = "{0} item(ns)" -f $s.Dados.Count
+                $box  = "( )"
+                if ($s.Marcado) { $box = "(x)" }
+            }
+
+            $cor = "DarkGray"
+            if ($box -ne "( )") { $cor = "White" }
+
+            Write-Host ("   [{0}] {1} {2} {3}" -f ($i + 1), $box, $s.Titulo.PadRight(26), $info) -ForegroundColor $cor
+        }
+
+        $total = Get-TotalMarcado -Catalogo $Catalogo
+        Write-Host ""
+        Write-Host ("   Itens selecionados: {0}" -f $total) -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "   [numero] Abrir secao (campos) ou marcar/desmarcar (blocos)"
+        Write-Host "   [A] Marcar tudo   [L] Limpar tudo   [B] So identificacao (marca, modelo, MTM, MO, S/N)"
+        Write-Host "   [G] Gerar relatorio   [0] Cancelar" -ForegroundColor DarkGray
+        Write-Host ""
+
+        $entrada = (Read-Host "   Opcao").Trim()
+
+        if ($entrada -eq "0") {
+            $resultado = $false
+            $fim = $true
+        }
+        elseif ($entrada -eq "G") {
+            if ($total -eq 0) {
+                Write-Host "  Selecione pelo menos um item." -ForegroundColor Yellow
+                Start-Sleep -Seconds 1
+            }
+            else {
+                $resultado = $true
+                $fim = $true
+            }
+        }
+        elseif ($entrada -eq "A") { Set-MarcacaoGeral -Catalogo $Catalogo -Valor $true }
+        elseif ($entrada -eq "L") { Set-MarcacaoGeral -Catalogo $Catalogo -Valor $false }
+        elseif ($entrada -eq "B") { Set-MarcacaoIdentificacao -Catalogo $Catalogo }
+        else {
+            $n = 0
+            if ([int]::TryParse($entrada, [ref]$n) -and $n -ge 1 -and $n -le $Catalogo.Count) {
+                $sec = $Catalogo[$n - 1]
+                if ($sec.Tipo -eq "campos") { Show-SelecaoCampos -Secao $sec }
+                else { $sec.Marcado = (-not $sec.Marcado) }
+            }
+            else {
+                Write-Host "  Opcao invalida." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    } while (-not $fim)
+
+    return $resultado
+}
+
+function Read-PastaDestino {
+    # Pergunta onde salvar. Retorna o caminho da pasta ou $null se cancelar.
+    Write-Host ""
+    Write-Host "   Onde salvar o relatorio?"
+    Write-Host "   [1] Area de Trabalho"
+    Write-Host "   [2] Selecionar local (abre janela)"
+    Write-Host "   [0] Cancelar" -ForegroundColor DarkGray
+    Write-Host ""
+
+    $r = (Read-Host "   Escolha uma opcao").Trim()
+    switch ($r) {
+        "1" { return [Environment]::GetFolderPath("Desktop") }
+        "2" {
+            Write-Host "  Abrindo janela de selecao..." -ForegroundColor DarkGray
+            return (Select-PastaDestino)
+        }
+        default { return $null }
+    }
+}
+
+function Export-RelatorioPersonalizado {
+    param(
+        [Parameter(Mandatory)][string]$Pasta,
+        [Parameter(Mandatory)]$Catalogo
+    )
+
+    if (-not (Test-Path -LiteralPath $Pasta -PathType Container)) {
+        Write-Host ""
+        Write-Host "  Pasta nao encontrada: $Pasta" -ForegroundColor Red
+        return
+    }
+
+    $destino = Join-Path $Pasta `
+        ("Inventario_Personalizado_{0}_{1:yyyy-MM-dd_HHmm}.txt" -f $env:COMPUTERNAME, (Get-Date))
+
+    $linhas = New-Object System.Collections.ArrayList
+    [void]$linhas.Add("RELATORIO DE INVENTARIO (PERSONALIZADO) - $env:COMPUTERNAME")
+    [void]$linhas.Add("Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')")
+    [void]$linhas.Add("")
+
+    foreach ($s in $Catalogo) {
+        if ($s.Tipo -eq "campos") {
+            $sel = @($s.Campos | Where-Object { $_.Marcado })
+            if ($sel.Count -eq 0) { continue }
+
+            [void]$linhas.Add("--- " + $s.Titulo.ToUpper() + " ---")
+            $largura = 0
+            foreach ($c in $sel) { if ($c.Nome.Length -gt $largura) { $largura = $c.Nome.Length } }
+            foreach ($c in $sel) {
+                [void]$linhas.Add(("{0} : {1}" -f $c.Nome.PadRight($largura), $c.Valor))
+            }
+            [void]$linhas.Add("")
+        }
+        elseif ($s.Marcado) {
+            [void]$linhas.Add("--- " + $s.Titulo.ToUpper() + " ---")
+            if ($s.Dados.Count -eq 0) {
+                [void]$linhas.Add("(sem dados)")
+            }
+            elseif ($s.Formato -eq "lista") {
+                [void]$linhas.Add(($s.Dados | Format-List | Out-String -Width 250).TrimEnd())
+            }
+            else {
+                [void]$linhas.Add(($s.Dados | Format-Table -AutoSize | Out-String -Width 250).TrimEnd())
+            }
+            [void]$linhas.Add("")
+        }
+    }
+
+    try {
+        $linhas | Out-File -LiteralPath $destino -Encoding UTF8 -ErrorAction Stop
+        Write-Host ""
+        Write-Host "  Relatorio salvo em:" -ForegroundColor Green
+        Write-Host "  $destino" -ForegroundColor White
+    }
+    catch {
+        Write-Host ""
+        Write-Host "  Falha ao salvar o relatorio em: $Pasta" -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkRed
+        Write-Host "  Dica: escolha outra pasta (sem restricao de gravacao)." -ForegroundColor Yellow
+    }
+}
+
+function Invoke-InventarioPersonalizado {
+    Write-Titulo "INVENTARIO PERSONALIZADO"
+    Write-Host ""
+    Write-Host "  Coletando informacoes desta maquina..." -ForegroundColor DarkGray
+
+    $catalogo = Get-CatalogoInventario
+
+    $confirmou = Show-SelecaoInventario -Catalogo $catalogo
+    if (-not $confirmou) {
+        Write-Host ""
+        Write-Host "  Operacao cancelada." -ForegroundColor Yellow
+        return
+    }
+
+    $pasta = Read-PastaDestino
+    if (-not $pasta) {
+        Write-Host ""
+        Write-Host "  Operacao cancelada." -ForegroundColor Yellow
+        return
+    }
+
+    Export-RelatorioPersonalizado -Pasta $pasta -Catalogo $catalogo
+}
+
+#endregion
+
 function Show-SubMenuExportar {
     $voltar = $false
     do {
         Clear-Host
         Write-Titulo "BAIXAR RELATORIO"
         Write-Host ""
-        Write-Host "   [1] Exportar para a Area de Trabalho"
-        Write-Host "   [2] Selecionar local de download (abre janela)"
+        Write-Host "   [1] Inventario completo -> Area de Trabalho"
+        Write-Host "   [2] Inventario completo -> selecionar local (abre janela)"
+        Write-Host "   [3] Inventario personalizado (escolher o que entra no relatorio)"
         Write-Host ""
         Write-Host "   [0] Voltar ao menu principal" -ForegroundColor DarkGray
         Write-Host ""
@@ -308,6 +628,11 @@ function Show-SubMenuExportar {
                     Write-Host ""
                     Write-Host "  Nenhuma pasta selecionada. Operacao cancelada." -ForegroundColor Yellow
                 }
+                Pausar
+                $voltar = $true
+            }
+            "3" {
+                Invoke-InventarioPersonalizado
                 Pausar
                 $voltar = $true
             }
