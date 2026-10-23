@@ -1071,8 +1071,11 @@ function Show-Menu {
     Write-Host "   [4] Memoria RAM (por slot)"
     Write-Host "   [5] Discos fisicos e volumes"
     Write-Host "   [6] Rede (IP, MAC, gateway, DNS)"
-    Write-Host "   [7] TUDO na tela"
-    Write-Host "   [8] Baixar relatorio (Area de Trabalho ou local a escolher)"
+    Write-Host "   [7] Usuarios da maquina (local / administrador)"
+    Write-Host "   [8] Aplicativos instalados (lista paginada)"
+    Write-Host "   [9] AnyDesk (codigo de acesso)"
+    Write-Host "   [10] TUDO na tela"
+    Write-Host "   [11] Baixar relatorio (Area de Trabalho ou local a escolher)"
     Write-Host ""
     Write-Host "   [0] Sair" -ForegroundColor DarkGray
     Write-Host ""
@@ -1118,15 +1121,34 @@ do {
             Pausar
         }
         "7" {
+            Write-Titulo "USUARIOS DA MAQUINA"
+            Show-InfoUsuarios
+            Pausar
+        }
+        "8" {
+            Write-Titulo "APLICATIVOS INSTALADOS"
+            Write-Host "  Coletando (pode levar alguns segundos)..." -ForegroundColor DarkGray
+            Show-InfoApps
+            Pausar
+        }
+        "9" {
+            Write-Titulo "ANYDESK"
+            Get-InfoAnyDesk | Format-List
+            Pausar
+        }
+        "10" {
             Write-Titulo "RESUMO GERAL";          Get-InfoResumo    | Format-List
             Write-Titulo "SISTEMA OPERACIONAL";   Get-InfoSO        | Format-List
             Write-Titulo "BIOS / PLACA-MAE";      Get-InfoBiosPlaca | Format-List
             Write-Titulo "MEMORIA RAM";           Get-InfoMemoria   | Format-Table -AutoSize
             Write-Titulo "VOLUMES";               Get-InfoVolumes   | Format-Table -AutoSize
             Write-Titulo "REDE";                  Get-InfoRede      | Format-List
+            Write-Titulo "ACESSO REMOTO (ANYDESK)"; Get-InfoAnyDesk | Format-List
+            Write-Titulo "USUARIOS DA MAQUINA";    Show-InfoUsuarios
+            Write-Titulo "APLICATIVOS INSTALADOS"; Show-InfoAppsLista
             Pausar
         }
-        "8" {
+        "11" {
             Show-SubMenuExportar
         }
         "0" {
