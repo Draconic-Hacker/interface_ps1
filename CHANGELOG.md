@@ -6,6 +6,11 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 Cada versão tem o **hash do commit** correspondente. É esse hash que vai na variável `COMMIT` do `Info-System-lock.bat` para fixar a versão.
 
+## [Unreleased]
+
+### Removido
+- Opção `[N] Próxima` da paginação de aplicativos (o ENTER já avança a página).
+
 ## [1.0.0] - 2026-10-23
 
 Commit: `8c7b257f266e1e8895db6a4dbaed83c9cda9da6e`
@@ -53,6 +58,7 @@ Commit: `331dd1d`
 ### Adicionado
 - Primeira versão: menu com resumo geral, sistema operacional, BIOS/placa-mãe/TPM, memória RAM, discos e volumes, rede, tudo na tela e exportação do relatório para a Área de Trabalho.
 
+[Unreleased]: https://github.com/Draconic-Hacker/interface_ps1/compare/3a7352d8690046c4e7c0d79c24cae76ccd8679c6...master
 [1.0.0]: https://github.com/Draconic-Hacker/interface_ps1/commit/8c7b257f266e1e8895db6a4dbaed83c9cda9da6e
 [0.3.0]: https://github.com/Draconic-Hacker/interface_ps1/commit/9446b55
 [0.2.0]: https://github.com/Draconic-Hacker/interface_ps1/commit/7c8b8ef
