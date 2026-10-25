@@ -132,7 +132,12 @@ Se o arquivo não existir ou não tiver o código, aparece `Nao encontrado`.
 
 ### MTM e MO
 
-São lidos dos dados que o fabricante grava na BIOS. O conteúdo varia por marca e por geração do equipamento, e em placas genéricas pode aparecer `N/D`. Confira os valores com a etiqueta da máquina.
+São lidos dos dados que o fabricante grava na BIOS (produto e SKU), e o conteúdo varia por marca e por geração do equipamento:
+
+- **MTM**: em muitos equipamentos Lenovo traz o **nome comercial** do modelo (por exemplo, `IdeaPad 1 15AMN7`). O código do tipo de máquina (por exemplo, `82X5`) aparece no campo **Modelo** do resumo.
+- **MO**: depende de o fabricante preencher o SKU. Quando não preenche, aparece `N/D` (acontece, por exemplo, no IdeaPad 1 15AMN7).
+
+Não é necessário executar como administrador para ler esses campos. Confira os valores com a etiqueta da máquina.
 
 ### Tipo de memória
 
