@@ -6,7 +6,7 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 Cada versão tem o **hash do commit** correspondente. É esse hash que vai na variável `COMMIT` do `Info-System-lock.bat` para fixar a versão.
 
-## [1.0.1]
+## [1.0.1] - 2026-10-25
 
 Commit: `3a7352d8690046c4e7c0d79c24cae76ccd8679c6`
 
