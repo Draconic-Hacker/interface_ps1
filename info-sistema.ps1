@@ -530,14 +530,14 @@ function Show-InfoApps {
         }
 
         Write-Host ""
-        Write-Host "   [N] Proxima   [P] Anterior   [G] Ir para pagina   [Q] Sair" -ForegroundColor Yellow
+        Write-Host "   [P] Anterior   [G] Ir para pagina   [Q] Sair" -ForegroundColor Yellow
         Write-Host ("   [C] Colunas   [B] Buscar por nome   [T] Itens por pagina (atual: {0})" -f $ItensPorPagina) -ForegroundColor Yellow
         Write-Host "   (ENTER = proxima pagina)" -ForegroundColor DarkGray
         Write-Host ""
 
         $op = (Read-Host "   Opcao").Trim()
 
-        if ($op -eq "" -or $op -eq "N") {
+        if ($op -eq "") {
             if ($pagina -lt $paginas) { $pagina++ }
         }
         elseif ($op -eq "P") {
