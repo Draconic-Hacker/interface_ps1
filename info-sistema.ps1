@@ -675,6 +675,172 @@ function Export-Relatorio {
     }
 }
 
+#region ---------- Formato do relatorio e exportacao CSV ----------
+
+function Read-FormatoRelatorio {
+    # Pergunta o formato do relatorio. Retorna "txt", "csv" ou $null (cancelou).
+    # ENTER = txt. O formato .json ainda nao esta disponivel ("em breve").
+    while ($true) {
+        Clear-Host
+        Write-Titulo "FORMATO DO RELATORIO"
+        Write-Host ""
+        Write-Host "   [1] .txt   texto para ler (padrao)"
+        Write-Host "   [2] .csv   planilha: uma tabela unica, abre no Excel"
+        Write-Host "   [3] .json  em breve" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "   [0] Cancelar        (ENTER = .txt)" -ForegroundColor DarkGray
+        Write-Host ""
+
+        $r = (Read-Host "   Escolha uma opcao").Trim()
+
+        if ($r -eq "" -or $r -eq "1") { return "txt" }
+        elseif ($r -eq "2")           { return "csv" }
+        elseif ($r -eq "0")           { return $null }
+        elseif ($r -eq "3") {
+            Write-Host "  O formato .json estara disponivel em breve." -ForegroundColor Yellow
+            Start-Sleep -Seconds 1
+        }
+        else {
+            Write-Host "  Opcao invalida." -ForegroundColor Red
+            Start-Sleep -Seconds 1
+        }
+    }
+}
+
+function ConvertTo-TextoCsv {
+    # Converte um valor em texto para o CSV.
+    # - numeros decimais usam a cultura atual (virgula no pt-BR), igual ao relatorio .txt
+    # - valores que comecam com = + - @ ganham um apostrofo na frente: evita que o Excel
+    #   execute o conteudo como formula (ex.: nome de aplicativo malicioso no Registro)
+    param($Valor)
+
+    if ($null -eq $Valor) { return "" }
+
+    $texto = ""
+    if ($Valor -is [double] -or $Valor -is [single] -or $Valor -is [decimal]) {
+        $texto = $Valor.ToString()
+    }
+    else {
+        $texto = [string]$Valor
+    }
+
+    if ($texto -match '^[=+\-@]') { $texto = "'" + $texto }
+    return $texto
+}
+
+function New-LinhaCsv {
+    param($Maquina, $Data, $Secao, $Item, $Campo, $Valor)
+
+    [PSCustomObject]@{
+        "Maquina"    = $Maquina
+        "DataColeta" = $Data
+        "Secao"      = $Secao
+        "Item"       = (ConvertTo-TextoCsv $Item)
+        "Campo"      = $Campo
+        "Valor"      = (ConvertTo-TextoCsv $Valor)
+    }
+}
+
+function ConvertTo-LinhasCsvLongo {
+    # Formato longo: uma linha por informacao.
+    #   Maquina ; DataColeta ; Secao ; Item ; Campo ; Valor
+    # - Secoes de campos soltos (Resumo, SO...): Item vazio, um Campo por linha.
+    # - Secoes de tabela (memoria, usuarios, aplicativos...): Item = identificador da linha
+    #   (slot, usuario, nome do aplicativo...) e um Campo por coluna.
+    param([Parameter(Mandatory)]$Catalogo)
+
+    $maquina = $env:COMPUTERNAME
+    $data    = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $linhas  = New-Object System.Collections.ArrayList
+
+    # Metadado: versao do script que gerou o arquivo
+    [void]$linhas.Add((New-LinhaCsv -Maquina $maquina -Data $data -Secao "Relatorio" -Item "" -Campo "Versao do script" -Valor $ScriptVersao))
+
+    foreach ($s in $Catalogo) {
+        if ($s.Tipo -eq "campos") {
+            foreach ($c in $s.Campos) {
+                if (-not $c.Marcado) { continue }
+                [void]$linhas.Add((New-LinhaCsv -Maquina $maquina -Data $data -Secao $s.Titulo -Item "" -Campo $c.Nome -Valor $c.Valor))
+            }
+        }
+        elseif ($s.Marcado) {
+            foreach ($registro in @($s.Dados)) {
+                $props = @($registro.PSObject.Properties)
+                if ($props.Count -eq 0) { continue }
+
+                # Coluna usada como "Item": a chave da secao (ou a primeira coluna, se nao existir)
+                $nomeChave = $props[0].Name
+                foreach ($p in $props) {
+                    if ($p.Name -eq $s.Chave) { $nomeChave = $s.Chave }
+                }
+                $valorChave = $registro.PSObject.Properties[$nomeChave].Value
+
+                foreach ($p in $props) {
+                    if ($p.Name -eq $nomeChave) { continue }
+                    [void]$linhas.Add((New-LinhaCsv -Maquina $maquina -Data $data -Secao $s.Titulo -Item $valorChave -Campo $p.Name -Valor $p.Value))
+                }
+            }
+        }
+    }
+
+    return $linhas
+}
+
+function Export-RelatorioCsv {
+    param(
+        [Parameter(Mandatory)][string]$Pasta,
+        [Parameter(Mandatory)]$Catalogo,
+        [string]$Prefixo = "Inventario"
+    )
+
+    if (-not (Test-Path -LiteralPath $Pasta -PathType Container)) {
+        Write-Host ""
+        Write-Host "  Pasta nao encontrada: $Pasta" -ForegroundColor Red
+        return
+    }
+
+    $destino = Join-Path $Pasta `
+                         ("{0}_{1}_{2:yyyy-MM-dd_HHmm}.csv" -f $Prefixo, $env:COMPUTERNAME, (Get-Date))
+
+    $linhas = @(ConvertTo-LinhasCsvLongo -Catalogo $Catalogo)
+
+    try {
+        # ';' e o separador padrao do Excel em portugues.
+        # -Encoding UTF8 no Windows PowerShell 5.1 grava com BOM, que o Excel precisa para abrir os acentos certo.
+        $linhas | Export-Csv -LiteralPath $destino -Delimiter ";" -NoTypeInformation -Encoding UTF8 -ErrorAction Stop
+        Write-Host ""
+        Write-Host "  Relatorio salvo em:" -ForegroundColor Green
+        Write-Host "  $destino" -ForegroundColor White
+        Write-Host ("  Linhas gravadas: {0}" -f $linhas.Count) -ForegroundColor DarkGray
+    }
+    catch {
+        Write-Host ""
+        Write-Host "  Falha ao salvar o relatorio em: $Pasta" -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkRed
+        Write-Host "  Dica: escolha outra pasta (sem restricao de gravacao)." -ForegroundColor Yellow
+    }
+}
+
+function Export-RelatorioCompleto {
+    # Inventario completo no formato escolhido ("txt" ou "csv")
+    param(
+        [Parameter(Mandatory)][string]$Pasta,
+        [Parameter(Mandatory)][string]$Formato
+    )
+
+    if ($Formato -eq "csv") {
+        Write-Host ""
+        Write-Host "  Coletando informacoes desta maquina (a lista de aplicativos pode levar alguns segundos)..." -ForegroundColor DarkGray
+        $catalogo = Get-CatalogoInventario
+        Export-RelatorioCsv -Pasta $Pasta -Catalogo $catalogo -Prefixo "Inventario"
+    }
+    else {
+        Export-Relatorio -Pasta $Pasta
+    }
+}
+
+#endregion
+
 #region ---------- Inventario personalizado (prototipo) ----------
 
 function Get-CatalogoInventario {
@@ -711,17 +877,17 @@ function Get-CatalogoInventario {
     $apps     = @(Get-InfoApps)
 
     $tabelas = @(
-        [PSCustomObject]@{ Titulo = "Memoria RAM (por slot)";  Formato = "tabela"; Dados = @(Get-InfoMemoria) },
-        [PSCustomObject]@{ Titulo = "Volumes de disco";        Formato = "tabela"; Dados = @(Get-InfoVolumes) },
-        [PSCustomObject]@{ Titulo = "Rede";                    Formato = "lista";  Dados = @(Get-InfoRede) },
-        [PSCustomObject]@{ Titulo = "Usuarios da maquina"; Formato = "tabela"; Dados = $usuarios; Rodape = (Get-ResumoUsuarios -Usuarios $usuarios) },
-        [PSCustomObject]@{ Titulo = "Aplicativos instalados"; Formato = "tabela"; Dados = $apps; Rodape = (Get-ResumoApps -Apps $apps) }
+        [PSCustomObject]@{ Titulo = "Memoria RAM (por slot)";  Formato = "tabela"; Chave = "Slot";      Dados = @(Get-InfoMemoria) },
+        [PSCustomObject]@{ Titulo = "Volumes de disco";        Formato = "tabela"; Chave = "Unidade";   Dados = @(Get-InfoVolumes) },
+        [PSCustomObject]@{ Titulo = "Rede";                    Formato = "lista";  Chave = "Adaptador"; Dados = @(Get-InfoRede) },
+        [PSCustomObject]@{ Titulo = "Usuarios da maquina"; Formato = "tabela"; Chave = "Usuario"; Dados = $usuarios; Rodape = (Get-ResumoUsuarios -Usuarios $usuarios) },
+        [PSCustomObject]@{ Titulo = "Aplicativos instalados"; Formato = "tabela"; Chave = "Nome"; Dados = $apps; Rodape = (Get-ResumoApps -Apps $apps) }
     )
 
     foreach ($t in $tabelas) {
         [void]$catalogo.Add([PSCustomObject]@{
             Tipo = "tabela"; Titulo = $t.Titulo; Formato = $t.Formato
-            Campos = $null; Dados = $t.Dados; Marcado = $true; Rodape = $t.Rodape
+            Campos = $null; Dados = $t.Dados; Marcado = $true; Rodape = $t.Rodape; Chave = $t.Chave
         })
     }
 
@@ -982,6 +1148,8 @@ function Export-RelatorioPersonalizado {
 }
 
 function Invoke-InventarioPersonalizado {
+    param([string]$Formato = "txt")
+
     Write-Titulo "INVENTARIO PERSONALIZADO"
     Write-Host ""
     Write-Host "  Coletando informacoes desta maquina (a lista de aplicativos pode levar alguns segundos)..." -ForegroundColor DarkGray
@@ -1002,7 +1170,12 @@ function Invoke-InventarioPersonalizado {
         return
     }
 
-    Export-RelatorioPersonalizado -Pasta $pasta -Catalogo $catalogo
+    if ($Formato -eq "csv") {
+        Export-RelatorioCsv -Pasta $pasta -Catalogo $catalogo -Prefixo "Inventario_Personalizado"
+    }
+    else {
+        Export-RelatorioPersonalizado -Pasta $pasta -Catalogo $catalogo
+    }
 }
 
 #endregion
@@ -1024,28 +1197,38 @@ function Show-SubMenuExportar {
 
         switch ($sub) {
             "1" {
-                Export-Relatorio -Pasta ([Environment]::GetFolderPath("Desktop"))
-                Pausar
-                $voltar = $true
+                # Se cancelar na pergunta de formato, volta para este submenu
+                $formato = Read-FormatoRelatorio
+                if ($formato) {
+                    Export-RelatorioCompleto -Pasta ([Environment]::GetFolderPath("Desktop")) -Formato $formato
+                    Pausar
+                    $voltar = $true
+                }
             }
             "2" {
-                Write-Host ""
-                Write-Host "  Abrindo janela de selecao..." -ForegroundColor DarkGray
-                $pasta = Select-PastaDestino
-                if ($pasta) {
-                    Export-Relatorio -Pasta $pasta
-                }
-                else {
+                $formato = Read-FormatoRelatorio
+                if ($formato) {
                     Write-Host ""
-                    Write-Host "  Nenhuma pasta selecionada. Operacao cancelada." -ForegroundColor Yellow
+                    Write-Host "  Abrindo janela de selecao..." -ForegroundColor DarkGray
+                    $pasta = Select-PastaDestino
+                    if ($pasta) {
+                        Export-RelatorioCompleto -Pasta $pasta -Formato $formato
+                    }
+                    else {
+                        Write-Host ""
+                        Write-Host "  Nenhuma pasta selecionada. Operacao cancelada." -ForegroundColor Yellow
+                    }
+                    Pausar
+                    $voltar = $true
                 }
-                Pausar
-                $voltar = $true
             }
             "3" {
-                Invoke-InventarioPersonalizado
-                Pausar
-                $voltar = $true
+                $formato = Read-FormatoRelatorio
+                if ($formato) {
+                    Invoke-InventarioPersonalizado -Formato $formato
+                    Pausar
+                    $voltar = $true
+                }
             }
             "0" { $voltar = $true }
             default {
