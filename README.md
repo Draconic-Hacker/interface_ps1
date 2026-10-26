@@ -16,7 +16,7 @@ Menu de inventário de máquinas (notebooks e desktops Windows) feito em PowerSh
 | **[8] Aplicativos instalados** | Lista paginada, com busca por nome e colunas opcionais (fabricante, data de instalação, origem) |
 | **[9] AnyDesk** | Código de acesso (instalação padrão e versão portable) |
 | **[10] TUDO na tela** | Todas as seções acima, em sequência |
-| **[11] Baixar relatório** | Exporta para `.txt` (veja [Relatórios](#relatórios)) |
+| **[11] Baixar relatório** | Exporta para `.txt` ou `.csv` (veja [Relatórios](#relatórios)) |
 
 ## Requisitos
 
@@ -61,6 +61,7 @@ powershell -ExecutionPolicy Bypass -File .\info-sistema.ps1
   +--------------------------------------------------------+
   |            INVENTARIO DE MAQUINA - NOME-DA-MAQUINA     |
   +--------------------------------------------------------+
+   Versao:   vX.Y.Z
    Contexto: ADMIN
 
    [1] Resumo geral (marca, modelo, S/N, CPU, GPU, RAM, discos)
@@ -90,10 +91,20 @@ A opção **[11] Baixar relatório** abre um submenu:
 | **[2] Inventário completo → selecionar local** | Abre a janela do Windows para você escolher a pasta |
 | **[3] Inventário personalizado** | Você escolhe o que entra no relatório e depois onde salvar |
 
-Nomes dos arquivos gerados:
+Depois de escolher uma delas, o script pergunta o **formato** do relatório:
 
-- `Inventario_<MAQUINA>_<AAAA-MM-DD_HHMM>.txt` (completo)
-- `Inventario_Personalizado_<MAQUINA>_<AAAA-MM-DD_HHMM>.txt` (personalizado)
+| Formato | Para que serve |
+|---|---|
+| **[1] .txt** (padrão, basta apertar ENTER) | Relatório em texto, para ler |
+| **[2] .csv** | Planilha em formato longo, para abrir no Excel e juntar vários computadores (veja [CSV](#csv-formato-longo)) |
+| **[3] .json** | Em breve |
+
+Use `0` para cancelar e voltar ao submenu.
+
+Nomes dos arquivos gerados (a extensão depende do formato escolhido):
+
+- `Inventario_<MAQUINA>_<AAAA-MM-DD_HHMM>.txt` ou `.csv` (completo)
+- `Inventario_Personalizado_<MAQUINA>_<AAAA-MM-DD_HHMM>.txt` ou `.csv` (personalizado)
 
 ### Inventário personalizado
 
@@ -102,6 +113,33 @@ Uma tela de seleção mostra todas as seções, e você marca o que quer no rela
 - Em **Resumo, Sistema operacional, BIOS/TPM e AnyDesk** você marca **campo a campo** (digite o número da seção para abrir a lista de campos).
 - Em **Memória, Volumes, Rede, Usuários e Aplicativos** você marca o **bloco inteiro**.
 - Atalhos: `A` marca tudo, `L` limpa, `B` seleciona só a identificação da máquina (marca, modelo, MTM, MO, S/N e AnyDesk) e `G` gera o relatório.
+
+### CSV (formato longo)
+
+Um arquivo só, com uma linha para cada informação, separado por `;` e em UTF-8 (abre direto no Excel em português). Colunas:
+
+| Coluna | Conteúdo |
+|---|---|
+| `Maquina` | Nome da máquina |
+| `DataColeta` | Data e hora da coleta |
+| `Secao` | Seção do inventário (Resumo, Memória RAM, Usuários, Aplicativos...) |
+| `Item` | Identifica a linha nas seções de tabela (slot, usuário, nome do aplicativo...). Fica vazio nos campos soltos |
+| `Campo` | Nome da informação |
+| `Valor` | Valor da informação |
+
+Exemplo:
+
+```
+"Maquina";"DataColeta";"Secao";"Item";"Campo";"Valor"
+"PC-EXEMPLO";"2026-10-25 20:10:03";"Resumo";"";"Marca";"Dell Inc."
+"PC-EXEMPLO";"2026-10-25 20:10:03";"Memoria RAM (por slot)";"DIMM A";"Tipo";"DDR4"
+"PC-EXEMPLO";"2026-10-25 20:10:03";"Aplicativos instalados";"7-Zip 26.02 (x64)";"Versao";"26.02"
+```
+
+- Há também uma linha `Relatorio` / `Versao do script`, que informa qual versão do script gerou o arquivo.
+- Para juntar vários computadores, basta somar as linhas dos arquivos, porque o cabeçalho é o mesmo.
+- No inventário personalizado, o CSV traz só o que você marcou.
+- Valores que começam com `=`, `+`, `-` ou `@` recebem um apóstrofo na frente, para o Excel não tratá-los como fórmula.
 
 ## Detalhes de cada informação
 
@@ -132,12 +170,7 @@ Se o arquivo não existir ou não tiver o código, aparece `Nao encontrado`.
 
 ### MTM e MO
 
-São lidos dos dados que o fabricante grava na BIOS (produto e SKU), e o conteúdo varia por marca e por geração do equipamento:
-
-- **MTM**: em muitos equipamentos Lenovo traz o **nome comercial** do modelo (por exemplo, `IdeaPad 1 15AMN7`). O código do tipo de máquina (por exemplo, `82X5`) aparece no campo **Modelo** do resumo.
-- **MO**: depende de o fabricante preencher o SKU. Quando não preenche, aparece `N/D` (acontece, por exemplo, no IdeaPad 1 15AMN7).
-
-Não é necessário executar como administrador para ler esses campos. Confira os valores com a etiqueta da máquina.
+São lidos dos dados que o fabricante grava na BIOS. O conteúdo varia por marca e por geração do equipamento, e em placas genéricas pode aparecer `N/D`. Confira os valores com a etiqueta da máquina.
 
 ### Tipo de memória
 
@@ -147,11 +180,14 @@ Vem do campo SMBIOS da memória: `24` = DDR3, `26` = DDR4, `34` = DDR5. Outros c
 
 Cada versão do script corresponde a um **commit**, e o `.bat` aponta para o hash desse commit. Assim, quem usa o `.bat` continua na mesma versão até ele ser atualizado, e uma alteração na branch não passa a rodar nas máquinas sem aprovação.
 
+A versão do script aparece no cabeçalho do menu (`Versao: vX.Y.Z`) e dentro dos relatórios gerados.
+
 Para publicar uma nova versão:
 
-1. Faça o commit do script e anote o hash com `git rev-parse HEAD`.
-2. Troque o valor de `COMMIT` no `.bat` e faça um commit separado.
-3. Registre a versão no [CHANGELOG](CHANGELOG.md).
+1. Faça o commit do script e anote o hash do commit que alterou o `info-sistema.ps1`: `git log -1 --format=%H -- info-sistema.ps1`.
+2. Registre a versão no [CHANGELOG](CHANGELOG.md), com esse hash.
+3. Troque o valor de `COMMIT` no `.bat` e faça um commit separado.
+4. Crie a tag da versão nesse mesmo commit do script: `git tag -a vX.Y.Z <hash> -m ":bookmark: Versao X.Y.Z"`.
 
 Os commits seguem o [padrão de commits do iuricode](https://github.com/iuricode/padroes-de-commits), por exemplo `:sparkles: feat: ...`, `:bug: fix: ...` e `:books: docs: ...`.
 
@@ -180,7 +216,7 @@ interface_ps1/
 
 ## Ideias para o futuro
 
-- Exportar em CSV e JSON, para consolidar vários computadores.
+- Exportar em JSON e em outros formatos de CSV: uma linha por máquina (para consolidar vários computadores) e um arquivo por seção.
 - Salvar perfis de seleção do inventário personalizado.
 - Coletar de várias máquinas ao mesmo tempo, de forma online.
 - Listar perfis de usuário de domínio (pasta `C:\Users`).
