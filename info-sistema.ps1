@@ -12,6 +12,10 @@
 # Garante acentuacao correta no console
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
+# Versao do script (mesmo numero do CHANGELOG e da tag vX.Y.Z).
+# Aparece no menu e nos relatorios gerados.
+$ScriptVersao = "1.1.0"
+
 #region ---------- Funcoes auxiliares ----------
 
 function Get-Admin {
@@ -636,6 +640,7 @@ function Export-Relatorio {
     $conteudo = @()
     $conteudo += "RELATORIO DE INVENTARIO - $env:COMPUTERNAME"
     $conteudo += "Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+    $conteudo += "Versao do script: $ScriptVersao"
     $conteudo += ""
     $conteudo += "--- RESUMO ---";            $conteudo += (Get-InfoResumo     | Format-List   | Out-String)
     $conteudo += "--- SISTEMA OPERACIONAL ---"; $conteudo += (Get-InfoSO       | Format-List   | Out-String)
@@ -930,6 +935,7 @@ function Export-RelatorioPersonalizado {
     $linhas = New-Object System.Collections.ArrayList
     [void]$linhas.Add("RELATORIO DE INVENTARIO (PERSONALIZADO) - $env:COMPUTERNAME")
     [void]$linhas.Add("Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')")
+    [void]$linhas.Add("Versao do script: $ScriptVersao")
     [void]$linhas.Add("")
 
     foreach ($s in $Catalogo) {
@@ -1063,6 +1069,7 @@ function Show-Menu {
     Write-Host "  +--------------------------------------------------------+" -ForegroundColor DarkCyan
     Write-Host "  |            INVENTARIO DE MAQUINA - $($env:COMPUTERNAME.PadRight(20))|" -ForegroundColor Cyan
     Write-Host "  +--------------------------------------------------------+" -ForegroundColor DarkCyan
+    Write-Host ("   Versao:   v{0}" -f $ScriptVersao) -ForegroundColor DarkGray
     Write-Host "   Contexto: " -NoNewline; Write-Host $admin -ForegroundColor $cor
     Write-Host ""
     Write-Host "   [1] Resumo geral (marca, modelo, S/N, CPU, GPU, RAM, discos)"
