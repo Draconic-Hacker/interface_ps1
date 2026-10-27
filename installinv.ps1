@@ -50,4 +50,3 @@ $Shortcut.Save()
 
 Write-Host "`nAtalho criado na Area de Trabalho com sucesso!" -ForegroundColor Green
 Write-Host "`nPressione Enter para fechar o terminal..." -ForegroundColor Green
-Read-Host | Out-Null
