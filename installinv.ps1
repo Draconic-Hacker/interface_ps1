@@ -1,5 +1,4 @@
-﻿# Caminho em AppData (C:\Users\Usuario\AppData\Roaming\browser-files)
-$installDir = Join-Path $env:APPDATA "inventory-machine"
+﻿$installDir = Join-Path $env:APPDATA "inventory-machine"
 
 
 $initFile = Join-Path $installDir "Info-System-lock.bat"
