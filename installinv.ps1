@@ -20,6 +20,7 @@ Write-Host "Baixando os arquivos do inventory-machine..." -ForegroundColor Cyan
 
 # Os scripts .ps1 podem ser baixados normalmente
 Invoke-WebRequest $urlinitFile -OutFile $initFile
+Invoke-WebRequest -Uri $urlUninstall -OutFile $uninstallFile
 
 # 3. Adiciona ao PATH do UsuÃ¡rio (se jÃ¡ nÃ£o estiver lÃ¡)
 $oldPath = [Environment]::GetEnvironmentVariable("Path", "User")
