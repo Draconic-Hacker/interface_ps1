@@ -2,9 +2,12 @@
 
 
 $initFile = Join-Path $installDir "Info-System-lock.bat"
+$uninstallFile = Join-Path $installDir "uninstall.ps1"
 
 
 $urlinitFile = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/3eec0f9ae620a20bb60adf33a403ca9415aecae8/Info-System-lock.bat"
+$urlUninstall = "https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/master/uninstall.ps1"
+
 
 # 1. Cria a pasta se nÃ£o existir
 if (!(Test-Path $installDir)) {
