@@ -1,25 +1,17 @@
 ﻿# muda de pasta para executar o script
-cd $env:TEMP
+cd C:\relatorioInventario
 
-# uninstall.ps1
-$installDir = Join-Path $env:APPDATA "inventory-machine"
+# Caminho da pasta que foi criada na Raiz
+$scriptsDir = $scriptsDir = "C:\relatorioScripts"
 
-# 1. Remove do PATH do UsuÃ¡rio
-$oldPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$newPath = ($oldPath -split ';' | Where-Object { $_ -ne $installDir }) -join ';'
-[Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-
-# 2. Remove a pasta fÃ­sica
-if (Test-Path $installDir) {
-    Remove-Item -Path $installDir -Recurse -Force
+# Remove apenas a pasta física da Raiz se ela existir
+if (Test-Path $scriptsDir) {
+    Remove-Item -Path $scriptsDir -Recurse -Force
+    cls
+    Write-Host "`nInventario coletado e enviado para o TI, obrigado." -ForegroundColor Green
+	Start-Sleep -Seconds 3
+} else {
+    cls
+    Write-Host "`nA pasta especificada não foi encontrada." -ForegroundColor Yellow
+	Start-Sleep -Seconds 3
 }
-
-Write-Host "`ninventory-machine foi removido com sucesso." -ForegroundColor Green
-Write-Host "`nRemovendo o Atalho na Area de trabalho...." -Foreground Yellow
-
-$removeLnk = Join-Path $env:USERPROFILE "Desktop"
-$lnkGui = Join-Path $removeLnk "inventario.lnk"
-Remove-Item $lnkGui -Recurse -Force
-
-Write-Host "`nAtalho removido com sucesso." -ForegroundColor Green
-Write-Host "`nPressione Enter para fechar." -Foreground Yellow
