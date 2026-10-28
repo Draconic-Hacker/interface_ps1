@@ -1,6 +1,6 @@
 @echo off
 :: Defina a pasta de destino
-set "PASTA_DESTINO=C:\SuaPasta\Aqui"
+set "PASTA_DESTINO=C:\relatorioScripts"
 
 :: Cria a pasta caso ela não exista
 if not exist "%PASTA_DESTINO%" mkdir "%PASTA_DESTINO%"
