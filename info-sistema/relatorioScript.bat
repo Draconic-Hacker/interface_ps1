@@ -22,6 +22,12 @@ if errorlevel 1 goto erro_download
 echo Baixando desinstalador...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -UseBasicParsing -Uri '%URL_UNINSTALL%' -OutFile '%PASTA_DESTINO%\uninstall.ps1'"
 
+if not exist "%PASTA_DESTINO%\uninstall.ps1" (
+    echo ERRO: O desinstalador nao foi baixado.
+    pause
+    exit /b 1
+)
+
 if errorlevel 1 goto erro_download
 
 :: Executa o relatorio UMA unica vez
@@ -29,10 +35,18 @@ echo.
 echo Iniciando coleta de inventario...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PASTA_DESTINO%\info-sistema.ps1"
 
-:: Executa o desinstalador depois que o relatorio terminar
+:: Verifica se o desinstalador existe antes de executa-lo
 echo.
 echo Limpando arquivos temporarios...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PASTA_DESTINO%\uninstall.ps1"
+
+if exist "%PASTA_DESTINO%\uninstall.ps1" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PASTA_DESTINO%\uninstall.ps1"
+) else (
+    echo ERRO: O arquivo uninstall.ps1 nao foi encontrado.
+    echo Verifique se o download foi concluido corretamente.
+    pause
+)
+
 
 :: Aguarda brevemente antes de excluir o inicializador
 echo.
