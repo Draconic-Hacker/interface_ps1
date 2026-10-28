@@ -2,7 +2,7 @@
 cd C:\relatorioInventario
 
 # Caminho da pasta que foi criada na Raiz
-$scriptsDir = $scriptsDir = "C:\relatorioScripts"
+$scriptsDir = "C:\relatorioScripts"
 
 # Remove apenas a pasta física da Raiz se ela existir
 if (Test-Path $scriptsDir) {
