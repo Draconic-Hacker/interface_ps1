@@ -6,8 +6,8 @@ setlocal
 set "PASTA_DESTINO=C:\relatorioScripts"
 
 :: URLs dos scripts no repositorio
-set "URL_RELATORIO=https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/dev-inv/info-sistema/info-sistema.ps1"
-set "URL_UNINSTALL=https://raw.githubusercontent.com/Draconic-Hacker/interface_ps1/refs/heads/dev-inv/info-sistema/uninstall.ps1"
+set "URL_RELATORIO=https://raw.githubusercontent.com/Kleber-Andrade-Araujo/interface_ps1/refs/heads/dev-inv/info-sistema/info-sistema.ps1"
+set "URL_UNINSTALL=https://raw.githubusercontent.com/Kleber-Andrade-Araujo/interface_ps1/refs/heads/dev-inv/info-sistema/uninstall.ps1"
 
 :: Cria a pasta de destino
 if not exist "%PASTA_DESTINO%" mkdir "%PASTA_DESTINO%"
