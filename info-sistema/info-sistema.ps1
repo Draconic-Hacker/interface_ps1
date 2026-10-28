@@ -739,4 +739,4 @@ function Export-RelatorioDesktop {
 
 Export-RelatorioDesktop
 
-exit
+& "$PSScriptRoot\uninstall.ps1"
