@@ -738,3 +738,5 @@ function Export-RelatorioDesktop {
 }
 
 Export-RelatorioDesktop
+
+exit
