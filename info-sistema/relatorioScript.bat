@@ -43,8 +43,7 @@ if exist "%PASTA_DESTINO%\uninstall.ps1" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PASTA_DESTINO%\uninstall.ps1"
 ) else (
     echo ERRO: O arquivo uninstall.ps1 nao foi encontrado.
-    echo Verifique se o download foi concluido corretamente.
-    pause
+    echo Remoção concluída!.
 )
 
 
